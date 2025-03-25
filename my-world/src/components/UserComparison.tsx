@@ -14,14 +14,14 @@ const UserComparison: React.FC<UserComparisonProps> = ({
 }) => {
   const { locations } = useLocationStore();
   const userNames = useLocationStore((state) => state.userNames);
-  const { profile: currentUser } = useUserStore();
+  const { activeProfileId } = useUserStore();
   const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   // Get unique user IDs from locations
   const userIds = Object.values(locations).reduce((acc, location) => {
     if (
       !acc.includes(location.addedBy) &&
-      location.addedBy !== currentUser.id
+      location.addedBy !== activeProfileId
     ) {
       acc.push(location.addedBy);
     }
@@ -50,10 +50,10 @@ const UserComparison: React.FC<UserComparisonProps> = ({
 
   // Find common locations between current user and selected user
   const findCommonLocations = () => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || !activeProfileId) return;
 
     const currentUserLocations = Object.values(locations).filter(
-      (loc) => loc.addedBy === currentUser.id,
+      (loc) => loc.addedBy === activeProfileId,
     );
     const selectedUserLocations = Object.values(locations).filter(
       (loc) => loc.addedBy === selectedUserId,

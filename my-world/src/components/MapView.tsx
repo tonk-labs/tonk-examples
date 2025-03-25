@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocationStore, useUserStore } from "../stores";
-import { Plus, User, MapPin, Menu, ChevronLeft, Info } from "lucide-react";
+import { User, MapPin, Menu, ChevronLeft, Info } from "lucide-react";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
+import UserSelector from "./UserSelector";
 
 // Declare MapKit JS types
 declare global {
@@ -56,7 +57,7 @@ const MapKitInitializer: React.FC<MapKitInitializerProps> = ({}) => {
 
 const MapView: React.FC = () => {
   const { locations, addLocation, removeLocation } = useLocationStore();
-  const { profile: userProfile, setUserProfile } = useUserStore();
+  const { profiles, activeProfileId } = useUserStore();
   const [isAddingLocation, setIsAddingLocation] = useState(false);
   const [newLocation, setNewLocation] = useState({
     name: "",
@@ -68,14 +69,17 @@ const MapView: React.FC = () => {
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileName, setProfileName] = useState(userProfile.name);
   const [commonLocationIds, setCommonLocationIds] = useState<string[]>([]);
   const userNames = useLocationStore((state) => state.userNames);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
+
+  // Get the active user profile
+  const activeProfile = profiles.find(
+    (profile) => profile.id === activeProfileId,
+  ) || { id: "", name: "Select a profile" };
 
   // Apple design system colors
   const appleColors = {
@@ -183,14 +187,18 @@ const MapView: React.FC = () => {
     longitude: number,
     name: string,
     placeId?: string,
+    place?: any, // Accept the full place object
   ) => {
     // Update state with the selected location
+    // If we have the full place object, extract the ID from it
+    const effectivePlaceId = place?.id || placeId || "";
+
     setNewLocation({
       ...newLocation,
       name: name,
       latitude: latitude,
       longitude: longitude,
-      placeId: placeId || "",
+      placeId: effectivePlaceId,
     });
 
     // Center the map on the selected location
@@ -217,6 +225,11 @@ const MapView: React.FC = () => {
 
       // Mark it as temporary
       marker.isTemporary = true;
+
+      // Store place ID in the marker if available
+      if (effectivePlaceId) {
+        marker.placeId = effectivePlaceId;
+      }
 
       // Add to map (but don't select it)
       try {
@@ -272,35 +285,45 @@ const MapView: React.FC = () => {
     // If we have a place ID, try to use it directly
     if (placeId) {
       try {
-        // Create a new Search instance
-        const search = new window.mapkit.Search();
+        // Create a new Search instance with the current map region
+        const search = new window.mapkit.Search({
+          region: mapInstanceRef.current.region,
+        });
 
-        // Use search.item method instead of lookup
-        search.items(
-          {
-            identifiers: [placeId],
-            language: window.mapkit.language,
-          },
-          (error: any, data: any) => {
-            if (error) {
-              console.error("Error looking up place:", error);
-              // Fall back to geocoding
-              fallbackToGeocode(latitude, longitude);
-              return;
-            }
+        // Use search.search method with the place ID
+        search.search(placeId, (error: any, data: any) => {
+          if (error) {
+            console.error("Error looking up place:", error);
+            // Fall back to geocoding
+            fallbackToGeocode(latitude, longitude);
+            return;
+          }
 
-            if (data && data.items && data.items.length > 0) {
-              const place = data.items[0];
-              // Center the map on the place
-              mapInstanceRef.current.center = place.coordinate;
-              // Show the place details
-              mapInstanceRef.current.openMapsDetailForItem(place);
+          if (data && data.places && data.places.length > 0) {
+            const place = data.places[0];
+            // Center the map on the place
+            mapInstanceRef.current.center = place.coordinate;
+
+            // Show the place details - use the mapItem property which is a valid annotation
+            if (place.mapItem) {
+              mapInstanceRef.current.showItems([place.mapItem]);
             } else {
-              // Fall back to geocoding
-              fallbackToGeocode(latitude, longitude);
+              // If no mapItem is available, create a marker annotation
+              const annotation = new window.mapkit.MarkerAnnotation(
+                place.coordinate,
+                {
+                  title: place.name,
+                  subtitle: place.formattedAddress || "",
+                  selected: true,
+                },
+              );
+              mapInstanceRef.current.showItems([annotation]);
             }
-          },
-        );
+          } else {
+            // Fall back to geocoding
+            fallbackToGeocode(latitude, longitude);
+          }
+        });
       } catch (error) {
         console.error("Error with place info lookup:", error);
         fallbackToGeocode(latitude, longitude);
@@ -330,7 +353,7 @@ const MapView: React.FC = () => {
         mapInstanceRef.current.center = coordinate;
         // Try to show place details
         if (result.mapItem) {
-          mapInstanceRef.current.openMapsDetailForMapItem(result.mapItem);
+          mapInstanceRef.current.showItems([result.mapItem]);
         }
       }
     });
@@ -351,7 +374,7 @@ const MapView: React.FC = () => {
     const markers = Object.values(locations).map((location) => {
       // Determine marker color based on who added it and if it's common
       let markerColor = appleColors.blue; // Default blue for current user
-      if (userProfile.id !== location.addedBy) {
+      if (activeProfileId !== location.addedBy) {
         markerColor = appleColors.red; // Red for other users
       }
       if (commonLocationIds.includes(location.id)) {
@@ -400,7 +423,7 @@ const MapView: React.FC = () => {
                 <h3 style="font-weight: 600; font-size: 17px; margin-bottom: 6px; color: #000;">${location.name}</h3>
                 ${location.description ? `<p style="font-size: 15px; margin-bottom: 8px; color: #333;">${location.description}</p>` : ""}
                 <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
-                  Added by: ${userProfile.id === location.addedBy ? "You" : userNames[location.addedBy] || "Anonymous"}
+                  Added by: ${activeProfileId === location.addedBy ? "You" : userNames[location.addedBy] || "Anonymous"}
                 </p>
                 ${
                   commonLocationIds.includes(location.id)
@@ -410,7 +433,7 @@ const MapView: React.FC = () => {
                 <div style="display: flex; gap: 12px; margin-top: 12px;">
                   <button id="info-${location.id}" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Show Details</button>
                   ${
-                    userProfile.id === location.addedBy
+                    activeProfileId === location.addedBy
                       ? `<button id="remove-${location.id}" style="font-size: 15px; color: #FF3B30; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Remove</button>`
                       : ""
                   }
@@ -556,7 +579,9 @@ const MapView: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
           <User className="h-4 w-4 text-gray-600" />
-          <span className="inline text-sm font-medium">{userProfile.name}</span>
+          <span className="inline text-sm font-medium">
+            {activeProfile.name}
+          </span>
         </div>
       </div>
 
@@ -604,119 +629,8 @@ const MapView: React.FC = () => {
           </div>
 
           <div className="p-4">
-            {/* Profile Section - Apple-style */}
-            <div
-              className="mb-6 rounded-xl overflow-hidden"
-              style={{ backgroundColor: appleColors.gray.light }}
-            >
-              <div
-                className="px-4 py-3 border-b"
-                style={{ borderColor: "rgba(0, 0, 0, 0.05)" }}
-              >
-                <h3
-                  className="font-semibold flex items-center gap-2"
-                  style={{ fontSize: "15px" }}
-                >
-                  <User className="h-4 w-4" />
-                  Profile
-                </h3>
-              </div>
-
-              {isEditingProfile ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (profileName.trim() === "") return;
-                    setUserProfile(profileName);
-                    setIsEditingProfile(false);
-                  }}
-                  className="p-4 flex flex-col gap-3"
-                >
-                  <div>
-                    <label
-                      htmlFor="profile-name"
-                      className="text-sm font-medium"
-                      style={{ color: appleColors.text.secondary }}
-                    >
-                      Name
-                    </label>
-                    <input
-                      id="profile-name"
-                      type="text"
-                      value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
-                      className="w-full px-3 py-2 border mt-1 focus:outline-none focus:ring-2"
-                      style={{
-                        borderColor: appleColors.gray.medium,
-                        borderRadius: "8px",
-                        fontSize: "15px",
-                      }}
-                      placeholder="Your name"
-                      required
-                    />
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingProfile(false);
-                        setProfileName(userProfile.name);
-                      }}
-                      className="flex-1 py-2 px-3 text-sm rounded-lg font-medium"
-                      style={{
-                        backgroundColor: "rgba(142, 142, 147, 0.12)",
-                        color: appleColors.text.primary,
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 py-2 px-3 text-sm rounded-lg font-medium text-white"
-                      style={{ backgroundColor: appleColors.blue }}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="p-4">
-                  <div className="mb-3">
-                    <div
-                      className="text-sm font-medium"
-                      style={{ color: appleColors.text.secondary }}
-                    >
-                      Name
-                    </div>
-                    <div style={{ fontSize: "15px" }}>{userProfile.name}</div>
-                  </div>
-                  <div className="mb-3">
-                    <div
-                      className="text-sm font-medium"
-                      style={{ color: appleColors.text.secondary }}
-                    >
-                      User ID
-                    </div>
-                    <div
-                      className="text-sm truncate"
-                      style={{ color: appleColors.text.secondary }}
-                    >
-                      {userProfile.id}
-                    </div>
-                  </div>
-                  <button
-                    className="mt-1 text-sm font-medium rounded-lg px-3 py-1.5"
-                    style={{ color: appleColors.blue }}
-                    onClick={() => {
-                      setIsEditingProfile(true);
-                      setProfileName(userProfile.name);
-                    }}
-                  >
-                    Edit Profile
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* User Profiles Section */}
+            <UserSelector />
 
             <UserComparison onShowCommonLocations={setCommonLocationIds} />
 
@@ -769,6 +683,13 @@ const MapView: React.FC = () => {
                         setMapCenter([location.latitude, location.longitude]);
                         setMapZoom(15);
                         setSidebarOpen(false);
+
+                        // Show place details using MapKit API
+                        showPlaceInfo(
+                          location.placeId || "",
+                          location.latitude,
+                          location.longitude,
+                        );
                       }}
                     >
                       <div className="font-medium" style={{ fontSize: "15px" }}>
@@ -792,7 +713,7 @@ const MapView: React.FC = () => {
                           </span>
                         )}
                         <span style={{ color: appleColors.text.secondary }}>
-                          {userProfile.id === location.addedBy
+                          {activeProfileId === location.addedBy
                             ? "Added by you"
                             : `Added by ${userNames[location.addedBy] || "Anonymous"}`}
                         </span>
@@ -838,8 +759,8 @@ const MapView: React.FC = () => {
           <div className="absolute top-4 left-4 z-[900] pointer-events-none">
             <div className="w-80 pointer-events-auto">
               <PlaceSearch
-                onPlaceSelect={(latitude, longitude, name, placeId) => {
-                  handlePlaceSelect(latitude, longitude, name, placeId);
+                onPlaceSelect={(latitude, longitude, name, placeId, place) => {
+                  handlePlaceSelect(latitude, longitude, name, placeId, place);
                   setIsAddingLocation(true);
                 }}
               />

@@ -21,6 +21,7 @@ interface PlaceSearchProps {
     longitude: number,
     name: string,
     placeId?: string,
+    place?: any,
   ) => void;
 }
 
@@ -129,6 +130,7 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
       result.coordinate.longitude,
       result.name,
       result.placeId,
+      result.place, // Pass the full place object
     );
     setQuery("");
     setResults([]);

@@ -45,20 +45,36 @@ export const useLocationStore = create<LocationState>(
       addLocation: (locationData) => {
         set((state) => {
           const id = generateId();
-          // Get the current user ID from the userStore
-          const { id: userId, name: userName } =
-            useUserStore.getState().profile;
+
+          // Get the current active user ID from the userStore
+          const userStore = useUserStore.getState();
+          const activeProfileId = userStore.activeProfileId;
+
+          if (!activeProfileId) {
+            console.error("No active user profile found");
+            return state;
+          }
+
+          // Find the active profile
+          const activeProfile = userStore.profiles.find(
+            (profile) => profile.id === activeProfileId,
+          );
+
+          if (!activeProfile) {
+            console.error("Active profile not found");
+            return state;
+          }
 
           // Update the userNames map with the current user's name
           const userNames = {
             ...state.userNames,
-            [userId]: userName,
+            [activeProfileId]: activeProfile.name,
           };
 
           const location: Location = {
             ...locationData,
             id,
-            addedBy: userId,
+            addedBy: activeProfileId,
             createdAt: Date.now(),
           };
 
