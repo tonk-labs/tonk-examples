@@ -10,6 +10,7 @@ export interface Location {
   longitude: number;
   addedBy: string;
   createdAt: number;
+  placeId: string;
 }
 
 export interface LocationState {
