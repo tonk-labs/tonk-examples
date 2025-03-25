@@ -1,6 +1,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocationStore, useUserStore, useCategoryStore } from "../stores";
-import { User, MapPin, Menu, ChevronLeft, Info, Filter } from "lucide-react";
+import {
+  User,
+  MapPin,
+  Menu,
+  ChevronLeft,
+  Info,
+  Filter,
+  Locate,
+} from "lucide-react";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
@@ -14,7 +22,17 @@ declare global {
 }
 
 const getMapKitToken = async (): Promise<string> => {
-  return "eyJraWQiOiJWWU5DUlVNTThHIiwidHlwIjoiSldUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiI4V1ZLUzJGMjRDIiwiaWF0IjoxNzQyODM4MDI2LCJleHAiOjE3NDM0OTA3OTl9.PLqIZrssCXQPFXZ3OUn22EflQaxQbNcqDvbn2OMQNtF8HuSPfTzpyDL4zgsIlefeUJNuyZsZhGz4Baete43cFQ";
+  // Use environment variable for the MapKit token
+  const token = import.meta.env.MAPKIT_TOKEN || process.env.MAPKIT_TOKEN;
+
+  if (!token) {
+    console.error("MapKit token not found in environment variables");
+    throw new Error(
+      "MapKit token not configured. Please set MAPKIT_TOKEN environment variable.",
+    );
+  }
+
+  return token;
 };
 
 // Component to initialize MapKit JS
@@ -80,6 +98,8 @@ const MapView: React.FC = () => {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -123,6 +143,7 @@ const MapView: React.FC = () => {
         showsMapTypeControl: false, // Hide map type control for cleaner UI
         isRotationEnabled: true, // Enable rotation for better UX
         showsPointsOfInterest: true,
+        showsUserLocation: true, // Show user's location on the map
         colorScheme: colorScheme,
         padding: new window.mapkit.Padding({
           top: 50,
@@ -359,6 +380,203 @@ const MapView: React.FC = () => {
         // Try to show place details
         if (result.mapItem) {
           mapInstanceRef.current.showItems([result.mapItem]);
+        }
+      }
+    });
+  };
+
+  // Function to get current location
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsGettingLocation(true);
+    setLocationError(null);
+
+    // Try to use high accuracy first
+    const getLocationWithOptions = (options: any) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+
+          // Center map on current location
+          setMapCenter([latitude, longitude]);
+          setMapZoom(15);
+
+          // Add a temporary marker for current location
+          if (mapIsReady && mapInstanceRef.current) {
+            // Remove any existing temporary marker
+            const tempMarker = markersRef.current.find((m) => m.isTemporary);
+            if (tempMarker) {
+              mapInstanceRef.current.removeAnnotation(tempMarker);
+              markersRef.current = markersRef.current.filter(
+                (m) => !m.isTemporary,
+              );
+            }
+
+            // Create a special marker for current location
+            const coordinate = new window.mapkit.Coordinate(
+              latitude,
+              longitude,
+            );
+            const marker = new window.mapkit.MarkerAnnotation(coordinate, {
+              color: "#007AFF", // Apple blue for current location
+              title: "Current Location",
+              glyphText: "•",
+              animates: true,
+              selected: true,
+            });
+
+            // Mark it as temporary and as current location
+            marker.isTemporary = true;
+            marker.isCurrentLocation = true;
+
+            // Add to map
+            try {
+              mapInstanceRef.current.addAnnotation(marker);
+              markersRef.current.push(marker);
+
+              // Reverse geocode to get location name
+              reverseGeocodeCurrentLocation(latitude, longitude);
+            } catch (error) {
+              console.error("Error adding current location annotation:", error);
+            }
+          }
+
+          setIsGettingLocation(false);
+        },
+        (error) => {
+          // If high accuracy fails and we haven't tried low accuracy yet, try with low accuracy
+          if (options.enableHighAccuracy && error.code === 2) {
+            console.log(
+              "High accuracy location failed, trying with low accuracy",
+            );
+            getLocationWithOptions({
+              enableHighAccuracy: false,
+              timeout: 20000,
+              maximumAge: 30000, // Allow a cached position up to 30 seconds old
+            });
+          } else {
+            // Handle error
+            let errorMessage = "Error getting location";
+
+            // Provide more specific error messages based on error code
+            switch (error.code) {
+              case 1: // PERMISSION_DENIED
+                errorMessage =
+                  "Location access denied. Please check your browser permissions.";
+                break;
+              case 2: // POSITION_UNAVAILABLE
+                errorMessage =
+                  "Your location is currently unavailable. Please try again outdoors or with better GPS signal.";
+                break;
+              case 3: // TIMEOUT
+                errorMessage = "Location request timed out. Please try again.";
+                break;
+              default:
+                errorMessage = `Error getting location: ${error.message}`;
+            }
+
+            setLocationError(errorMessage);
+            setIsGettingLocation(false);
+            console.error("Geolocation error:", error);
+          }
+        },
+        options,
+      );
+    };
+
+    // Start with high accuracy
+    getLocationWithOptions({
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    });
+  };
+
+  // Reverse geocode current location to get address
+  const reverseGeocodeCurrentLocation = (
+    latitude: number,
+    longitude: number,
+  ) => {
+    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
+
+    const geocoder = new window.mapkit.Geocoder();
+    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
+
+    geocoder.reverseLookup(coordinate, (error: any, data: any) => {
+      if (error) {
+        console.error("Geocoding error:", error);
+        return;
+      }
+
+      if (data && data.results && data.results.length > 0) {
+        const result = data.results[0];
+        const placeName = result.name || "Current Location";
+
+        // Update the temporary marker with the place name
+        const tempMarker = markersRef.current.find((m) => m.isTemporary);
+        if (tempMarker) {
+          tempMarker.title = placeName;
+
+          // Add a callout to the marker with an option to save this location
+          tempMarker.callout = {
+            calloutElementForAnnotation: () => {
+              const calloutElement = document.createElement("div");
+              calloutElement.className = "mapkit-callout";
+
+              // Apply Apple-style CSS
+              calloutElement.style.padding = "16px";
+              calloutElement.style.maxWidth = "280px";
+              calloutElement.style.backgroundColor = "white";
+              calloutElement.style.borderRadius = "14px";
+              calloutElement.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.12)";
+              calloutElement.style.border = "none";
+              calloutElement.style.fontFamily =
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+              calloutElement.innerHTML = `
+                <h3 style="font-weight: 600; font-size: 17px; margin-bottom: 6px; color: #000;">${placeName}</h3>
+                <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
+                  Your current location
+                </p>
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                  <button id="save-current-location" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Save This Location</button>
+                </div>
+              `;
+
+              // Add event listeners for buttons with hover effects
+              setTimeout(() => {
+                const saveButton = document.getElementById(
+                  "save-current-location",
+                );
+                if (saveButton) {
+                  saveButton.addEventListener("mouseover", () => {
+                    saveButton.style.backgroundColor = "rgba(0, 122, 255, 0.1)";
+                  });
+                  saveButton.addEventListener("mouseout", () => {
+                    saveButton.style.backgroundColor = "transparent";
+                  });
+                  saveButton.addEventListener("click", () => {
+                    // Prepare to add this location
+                    setNewLocation({
+                      name: placeName,
+                      description: "My current location",
+                      latitude: latitude,
+                      longitude: longitude,
+                      placeId: "",
+                      category: "default",
+                    });
+                    setIsAddingLocation(true);
+                  });
+                }
+              }, 0);
+
+              return calloutElement;
+            },
+          };
         }
       }
     });
@@ -886,6 +1104,59 @@ const MapView: React.FC = () => {
               />
             </div>
           </div>
+
+          {/* Current location button - aligned to bottom right */}
+          <div className="absolute bottom-24 right-4 z-[900]">
+            <button
+              onClick={getCurrentLocation}
+              disabled={isGettingLocation}
+              className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all"
+              style={{
+                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+                opacity: isGettingLocation ? 0.7 : 1,
+              }}
+              aria-label="Get current location"
+            >
+              <Locate
+                className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`}
+                style={{ color: appleColors.blue }}
+              />
+            </button>
+          </div>
+
+          {/* Location error message */}
+          {locationError && (
+            <div
+              className="absolute bottom-40 right-4 left-4 md:left-auto md:w-72 z-[900] bg-white rounded-lg p-3 shadow-lg"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                border: "1px solid rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <div className="flex items-start">
+                <div
+                  className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-2"
+                  style={{ backgroundColor: "rgba(255, 59, 48, 0.1)" }}
+                >
+                  <span style={{ color: appleColors.red }}>!</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Location Error</p>
+                  <p className="text-xs text-gray-600">{locationError}</p>
+                </div>
+                <button
+                  className="ml-auto text-xs font-medium"
+                  style={{ color: appleColors.blue }}
+                  onClick={() => setLocationError(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Apple-style Add Location Panel */}
           {isAddingLocation && (
