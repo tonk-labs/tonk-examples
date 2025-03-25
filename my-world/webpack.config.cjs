@@ -3,10 +3,20 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyPlugin = require('copy-webpack-plugin');
 const { InjectManifest } = require('workbox-webpack-plugin');
 const webpack = require('webpack');
+const dotenv = require('dotenv');
 
 module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
-  
+
+  // Load environment variables from .env file
+  const env_file = dotenv.config().parsed || {};
+
+  // Create an object with all environment variables
+  const envKeys = Object.keys(env_file).reduce((prev, next) => {
+    prev[`import.meta.env.${next}`] = JSON.stringify(env_file[next]);
+    return prev;
+  }, {});
+
   // Basic config that's always applied
   const config = {
     entry: './src/index.tsx',
@@ -61,9 +71,9 @@ module.exports = (env, argv) => {
       }),
       new CopyPlugin({
         patterns: [
-          { 
-            from: 'public', 
-            to: '', 
+          {
+            from: 'public',
+            to: '',
             globOptions: {
               ignore: ['**/index.html']
             }
@@ -72,7 +82,8 @@ module.exports = (env, argv) => {
       }),
       // Define environment variables that will be available to the application
       new webpack.DefinePlugin({
-        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development')
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
+        ...envKeys
       }),
     ],
     devServer: {

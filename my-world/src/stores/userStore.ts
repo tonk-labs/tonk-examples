@@ -1,49 +1,108 @@
 import { create } from "zustand";
+import { sync } from "@tonk/keepsync";
 import { useLocationStore } from "./locationStore";
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 interface UserState {
-  profile: {
-    name: string;
-    id: string;
-  };
-  setUserProfile: (name: string) => void;
+  profiles: UserProfile[];
+  activeProfileId: string | null;
+  createProfile: (name: string) => UserProfile;
+  setActiveProfile: (id: string) => void;
+  updateProfileName: (id: string, name: string) => void;
+  deleteProfile: (id: string) => void;
 }
 
 // Generate a random ID
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
-// Generate a random user ID if none exists in localStorage
-const getUserId = () => {
-  const storedId = localStorage.getItem("userId");
-  if (storedId) return storedId;
-
-  const newId = generateId();
-  localStorage.setItem("userId", newId);
-  return newId;
+// Get the active profile ID from localStorage
+const getActiveProfileId = () => {
+  return localStorage.getItem("activeProfileId");
 };
 
-// Initialize with default user profile
-const initialUserId = getUserId();
-const initialUserName = localStorage.getItem("userName") || "Anonymous";
+export const useUserStore = create<UserState>(
+  sync(
+    (set, get) => ({
+      profiles: [],
+      activeProfileId: getActiveProfileId(),
 
-export const useUserStore = create<UserState>((set) => ({
-  profile: {
-    name: initialUserName,
-    id: initialUserId,
-  },
+      createProfile: (name) => {
+        const id = generateId();
+        const newProfile: UserProfile = {
+          id,
+          name,
+          createdAt: Date.now(),
+        };
 
-  setUserProfile: (name) => {
-    localStorage.setItem("userName", name);
-    const userId = getUserId();
+        set((state) => ({
+          profiles: [...state.profiles, newProfile],
+        }));
 
-    // Update the user name in the location store's map
-    useLocationStore.getState().updateUserName(userId, name);
+        // Update the user name in the location store's map
+        useLocationStore.getState().updateUserName(id, name);
 
-    set((state) => ({
-      profile: {
-        ...state.profile,
-        name,
+        return newProfile;
       },
-    }));
-  },
-}));
+
+      setActiveProfile: (id) => {
+        // Store the active profile ID in localStorage
+        localStorage.setItem("activeProfileId", id);
+
+        set({ activeProfileId: id });
+      },
+
+      updateProfileName: (id, name) => {
+        set((state) => ({
+          profiles: state.profiles.map((profile) =>
+            profile.id === id ? { ...profile, name } : profile,
+          ),
+        }));
+
+        // Update the user name in the location store's map
+        useLocationStore.getState().updateUserName(id, name);
+      },
+
+      deleteProfile: (id) => {
+        set((state) => {
+          // Filter out the profile to delete
+          const updatedProfiles = state.profiles.filter(
+            (profile) => profile.id !== id,
+          );
+
+          // If we're deleting the active profile, set activeProfileId to null
+          const newActiveProfileId =
+            state.activeProfileId === id
+              ? updatedProfiles.length > 0
+                ? updatedProfiles[0].id
+                : null
+              : state.activeProfileId;
+
+          // Update localStorage if active profile changed
+          if (newActiveProfileId !== state.activeProfileId) {
+            if (newActiveProfileId) {
+              localStorage.setItem("activeProfileId", newActiveProfileId);
+            } else {
+              localStorage.removeItem("activeProfileId");
+            }
+          }
+
+          return {
+            profiles: updatedProfiles,
+            activeProfileId: newActiveProfileId,
+          };
+        });
+      },
+    }),
+    {
+      docId: "my-world-users",
+      initTimeout: 30000,
+      onInitError: (error) =>
+        console.error("User sync initialization error:", error),
+    },
+  ),
+);

@@ -1,13 +1,28 @@
-import React from "react";
-import { Route, Routes } from "react-router-dom";
-import { MapWorldView } from "./views";
+import React, { useEffect } from "react";
+import { MapView } from "./components";
+import { useUserStore } from "./stores";
 
-const App: React.FC = () => {
+function App() {
+  const { profiles, createProfile, activeProfileId, setActiveProfile } =
+    useUserStore();
+
+  // Create a default profile if none exists
+  useEffect(() => {
+    if (profiles.length === 0) {
+      // Create a default profile
+      const newProfile = createProfile("Default User");
+      setActiveProfile(newProfile.id);
+    } else if (!activeProfileId && profiles.length > 0) {
+      // If there are profiles but no active one, set the first one as active
+      setActiveProfile(profiles[0].id);
+    }
+  }, [profiles, activeProfileId]);
+
   return (
-    <Routes>
-      <Route path="/" element={<MapWorldView />} />
-    </Routes>
+    <div className="h-screen w-screen overflow-hidden">
+      <MapView />
+    </div>
   );
-};
+}
 
 export default App;
