@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useLocationStore, useUserStore } from "../stores";
-import { User, MapPin, Menu, ChevronLeft, Info } from "lucide-react";
+import { useLocationStore, useUserStore, useCategoryStore } from "../stores";
+import { User, MapPin, Menu, ChevronLeft, Info, Filter } from "lucide-react";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
+import CategoryManager from "./CategoryManager";
 
 // Declare MapKit JS types
 declare global {
@@ -58,6 +59,7 @@ const MapKitInitializer: React.FC<MapKitInitializerProps> = ({}) => {
 const MapView: React.FC = () => {
   const { locations, addLocation, removeLocation } = useLocationStore();
   const { profiles, activeProfileId } = useUserStore();
+  const { categories } = useCategoryStore();
   const [isAddingLocation, setIsAddingLocation] = useState(false);
   const [newLocation, setNewLocation] = useState({
     name: "",
@@ -65,7 +67,10 @@ const MapView: React.FC = () => {
     latitude: 0,
     longitude: 0,
     placeId: "",
+    category: "default", // Default category
   });
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -370,13 +375,26 @@ const MapView: React.FC = () => {
     );
     markersRef.current = tempMarker ? [tempMarker] : [];
 
+    // Filter locations by category if a category is selected
+    const filteredLocations = selectedCategory
+      ? Object.values(locations).filter(
+          (loc) => loc.category === selectedCategory,
+        )
+      : Object.values(locations);
+
     // Add markers for all locations
-    const markers = Object.values(locations).map((location) => {
-      // Determine marker color based on who added it and if it's common
+    const markers = filteredLocations.map((location) => {
+      // Determine marker color based on category, who added it, and if it's common
       let markerColor = appleColors.blue; // Default blue for current user
-      if (activeProfileId !== location.addedBy) {
+
+      // If the location has a category, use the category color
+      if (location.category && categories[location.category]) {
+        markerColor = categories[location.category].color;
+      } else if (activeProfileId !== location.addedBy) {
         markerColor = appleColors.red; // Red for other users
       }
+
+      // Common locations override with yellow
       if (commonLocationIds.includes(location.id)) {
         markerColor = appleColors.yellow; // Gold for common locations
       }
@@ -418,10 +436,21 @@ const MapView: React.FC = () => {
           );
           if (!location) return calloutElement;
 
+          // Get category information
+          const category = location.category
+            ? categories[location.category]
+            : null;
+          const categoryName = category ? category.name : "Uncategorized";
+          const categoryColor = category ? category.color : "#8E8E93";
+
           // Create Apple-style callout content
           calloutElement.innerHTML = `
                 <h3 style="font-weight: 600; font-size: 17px; margin-bottom: 6px; color: #000;">${location.name}</h3>
                 ${location.description ? `<p style="font-size: 15px; margin-bottom: 8px; color: #333;">${location.description}</p>` : ""}
+                <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${categoryColor}; margin-right: 6px;"></span>
+                  <span style="font-size: 13px; color: #8E8E93;">${categoryName}</span>
+                </div>
                 <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
                   Added by: ${activeProfileId === location.addedBy ? "You" : userNames[location.addedBy] || "Anonymous"}
                 </p>
@@ -510,6 +539,7 @@ const MapView: React.FC = () => {
       latitude: 0,
       longitude: 0,
       placeId: "",
+      category: "default",
     });
 
     // Remove temporary marker
@@ -533,6 +563,7 @@ const MapView: React.FC = () => {
       latitude: 0,
       longitude: 0,
       placeId: "",
+      category: "default",
     });
 
     // Remove temporary marker
@@ -632,6 +663,9 @@ const MapView: React.FC = () => {
             {/* User Profiles Section */}
             <UserSelector />
 
+            {/* Category Manager */}
+            <CategoryManager />
+
             <UserComparison onShowCommonLocations={setCommonLocationIds} />
 
             {/* Saved Locations Section - Apple-style */}
@@ -640,7 +674,7 @@ const MapView: React.FC = () => {
               style={{ backgroundColor: appleColors.gray.light }}
             >
               <div
-                className="px-4 py-3 border-b"
+                className="px-4 py-3 border-b flex justify-between items-center"
                 style={{ borderColor: "rgba(0, 0, 0, 0.05)" }}
               >
                 <h3
@@ -650,7 +684,58 @@ const MapView: React.FC = () => {
                   <MapPin className="h-4 w-4" />
                   Saved Locations
                 </h3>
+                <button
+                  onClick={() => setShowCategoryFilter(!showCategoryFilter)}
+                  className="p-1 rounded-full hover:bg-gray-200 transition-colors"
+                  style={{
+                    color: selectedCategory
+                      ? categories[selectedCategory]?.color
+                      : appleColors.text.secondary,
+                  }}
+                  aria-label="Filter by category"
+                >
+                  <Filter className="h-4 w-4" />
+                </button>
               </div>
+
+              {/* Category filter */}
+              {showCategoryFilter && (
+                <div
+                  className="p-2 border-b"
+                  style={{ borderColor: "rgba(0, 0, 0, 0.05)" }}
+                >
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setSelectedCategory(null)}
+                      className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                        selectedCategory === null
+                          ? "bg-gray-200"
+                          : "bg-gray-100"
+                      }`}
+                      style={{ color: appleColors.text.primary }}
+                    >
+                      All
+                    </button>
+                    {Object.values(categories).map((category) => (
+                      <button
+                        key={category.id}
+                        onClick={() => setSelectedCategory(category.id)}
+                        className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                          selectedCategory === category.id
+                            ? "bg-opacity-20"
+                            : "bg-opacity-10"
+                        }`}
+                        style={{
+                          backgroundColor: `${category.color}${selectedCategory === category.id ? "33" : "1A"}`,
+                          color: category.color,
+                        }}
+                      >
+                        {category.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="p-1 max-h-[40vh] overflow-y-auto">
                 {Object.values(locations).length === 0 ? (
@@ -670,56 +755,91 @@ const MapView: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  Object.values(locations).map((location) => (
-                    <div
-                      key={location.id}
-                      className="mx-2 my-1 p-3 rounded-lg text-sm cursor-pointer transition-colors duration-150"
-                      style={{
-                        backgroundColor: commonLocationIds.includes(location.id)
-                          ? "rgba(255, 204, 0, 0.1)"
-                          : "rgba(255, 255, 255, 0.6)",
-                      }}
-                      onClick={() => {
-                        setMapCenter([location.latitude, location.longitude]);
-                        setMapZoom(15);
-                        setSidebarOpen(false);
-
-                        // Show place details using MapKit API
-                        showPlaceInfo(
-                          location.placeId || "",
-                          location.latitude,
-                          location.longitude,
-                        );
-                      }}
-                    >
-                      <div className="font-medium" style={{ fontSize: "15px" }}>
-                        {location.name}
-                      </div>
-                      {location.description && (
+                  Object.values(locations)
+                    .filter(
+                      (location) =>
+                        !selectedCategory ||
+                        location.category === selectedCategory,
+                    )
+                    .map((location) => {
+                      const category = location.category
+                        ? categories[location.category]
+                        : null;
+                      return (
                         <div
-                          className="text-xs mt-0.5 line-clamp-1"
-                          style={{ color: appleColors.text.secondary }}
+                          key={location.id}
+                          className="mx-2 my-1 p-3 rounded-lg text-sm cursor-pointer transition-colors duration-150"
+                          style={{
+                            backgroundColor: commonLocationIds.includes(
+                              location.id,
+                            )
+                              ? "rgba(255, 204, 0, 0.1)"
+                              : "rgba(255, 255, 255, 0.6)",
+                            borderLeft: `3px solid ${category ? category.color : "transparent"}`,
+                          }}
+                          onClick={() => {
+                            setMapCenter([
+                              location.latitude,
+                              location.longitude,
+                            ]);
+                            setMapZoom(15);
+                            setSidebarOpen(false);
+
+                            // Show place details using MapKit API
+                            showPlaceInfo(
+                              location.placeId || "",
+                              location.latitude,
+                              location.longitude,
+                            );
+                          }}
                         >
-                          {location.description}
-                        </div>
-                      )}
-                      <div className="text-xs mt-1 flex items-center">
-                        {commonLocationIds.includes(location.id) && (
-                          <span
-                            className="mr-1"
-                            style={{ color: appleColors.yellow }}
+                          <div
+                            className="font-medium"
+                            style={{ fontSize: "15px" }}
                           >
-                            ⭐
-                          </span>
-                        )}
-                        <span style={{ color: appleColors.text.secondary }}>
-                          {activeProfileId === location.addedBy
-                            ? "Added by you"
-                            : `Added by ${userNames[location.addedBy] || "Anonymous"}`}
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                            {location.name}
+                          </div>
+                          {location.description && (
+                            <div
+                              className="text-xs mt-0.5 line-clamp-1"
+                              style={{ color: appleColors.text.secondary }}
+                            >
+                              {location.description}
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center mt-1">
+                            <div className="text-xs flex items-center">
+                              {commonLocationIds.includes(location.id) && (
+                                <span
+                                  className="mr-1"
+                                  style={{ color: appleColors.yellow }}
+                                >
+                                  ⭐
+                                </span>
+                              )}
+                              <span
+                                style={{ color: appleColors.text.secondary }}
+                              >
+                                {activeProfileId === location.addedBy
+                                  ? "Added by you"
+                                  : `Added by ${userNames[location.addedBy] || "Anonymous"}`}
+                              </span>
+                            </div>
+                            {category && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded-full"
+                                style={{
+                                  backgroundColor: `${category.color}1A`,
+                                  color: category.color,
+                                }}
+                              >
+                                {category.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                 )}
               </div>
             </div>
@@ -882,6 +1002,48 @@ const MapView: React.FC = () => {
                         }))
                       }
                     />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="location-category"
+                      className="block text-sm font-medium mb-1"
+                      style={{ color: appleColors.text.secondary }}
+                    >
+                      Category
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      {Object.values(categories).map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          className={`p-2 rounded-lg flex items-center gap-2 transition-colors ${
+                            newLocation.category === category.id
+                              ? "ring-2"
+                              : "hover:bg-gray-50"
+                          }`}
+                          style={{
+                            backgroundColor:
+                              newLocation.category === category.id
+                                ? `${category.color}1A`
+                                : "white",
+                            borderColor: appleColors.gray.medium,
+                          }}
+                          onClick={() =>
+                            setNewLocation((prev) => ({
+                              ...prev,
+                              category: category.id,
+                            }))
+                          }
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: category.color }}
+                          ></span>
+                          <span className="text-sm">{category.name}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {newLocation.latitude !== 0 && (

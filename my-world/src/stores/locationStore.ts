@@ -11,6 +11,7 @@ export interface Location {
   addedBy: string;
   createdAt: number;
   placeId: string;
+  category: string;
 }
 
 export interface LocationState {
