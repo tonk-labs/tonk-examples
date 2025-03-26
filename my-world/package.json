@@ -6,12 +6,16 @@
   "main": "index.js",
   "scripts": {
     "dev": "tonk dev",
+    "dev:server": "cd server && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "webpack --mode production",
     "serve": "tonk serve",
     "serve:dev": "npm run build && tonk serve",
     "deployment": "tonk deploy",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "install:all": "npm install && cd server && npm install",
+    "start": "NODE_ENV=production cd server && npm start"
   },
   "devDependencies": {
     "@tonk/cli": "^0.1.12",
@@ -23,6 +27,7 @@
     "@types/react-dom": "^19.0.3",
     "@types/ws": "^8.5.14",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^8.2.2",
     "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^6.11.0",
     "dotenv": "^16.4.7",

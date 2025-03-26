@@ -1,6 +1,21 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocationStore, useUserStore, useCategoryStore } from "../stores";
-import { User, MapPin, Menu, ChevronLeft, Info, Filter } from "lucide-react";
+import {
+  User,
+  MapPin,
+  Menu,
+  ChevronLeft,
+  Info,
+  Filter,
+  Star,
+  MessageSquare,
+  Clock,
+} from "lucide-react";
+import {
+  fetchAndUpdateBusinessHours,
+  BusinessHours,
+  updateAllLocationsOpenStatus,
+} from "../services/googleMapsService";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
@@ -67,7 +82,8 @@ const MapKitInitializer: React.FC<MapKitInitializerProps> = ({}) => {
 };
 
 const MapView: React.FC = () => {
-  const { locations, addLocation, removeLocation } = useLocationStore();
+  const { locations, addLocation, removeLocation, addReview, removeReview } =
+    useLocationStore();
   const { profiles, activeProfileId } = useUserStore();
   const { categories } = useCategoryStore();
   const [isAddingLocation, setIsAddingLocation] = useState(false);
@@ -92,6 +108,14 @@ const MapView: React.FC = () => {
   const [mapIsReady, setMapIsReady] = useState(false);
   // const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [businessHours, setBusinessHours] = useState<BusinessHours | null>(
+    null,
+  );
+  const [isLoadingHours, setIsLoadingHours] = useState(false);
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -377,6 +401,13 @@ const MapView: React.FC = () => {
                 <div style="display: flex; align-items: center; margin-bottom: 4px;">
                   <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${categoryColor}; margin-right: 6px;"></span>
                   <span style="font-size: 13px; color: #8E8E93;">${categoryName}</span>
+                  ${
+                    location.isOpen !== undefined && location.isOpen !== null
+                      ? `<span style="font-size: 12px; margin-left: 8px; padding: 2px 6px; border-radius: 10px; background-color: ${location.isOpen ? "rgba(52, 199, 89, 0.1)" : "rgba(255, 59, 48, 0.1)"}; color: ${location.isOpen ? "#34C759" : "#FF3B30"};">
+                      ${location.isOpen ? "Open" : "Closed"}
+                    </span>`
+                      : ""
+                  }
                 </div>
                 <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
                   Added by: ${activeProfileId === location.addedBy ? "You" : userNames[location.addedBy] || "Anonymous"}
@@ -388,6 +419,7 @@ const MapView: React.FC = () => {
                 }
                 <div style="display: flex; gap: 12px; margin-top: 12px;">
                   <button id="info-${location.id}" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Show Details</button>
+                  <button id="review-${location.id}" style="font-size: 15px; color: #FF9500; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Add Review</button>
                   ${
                     activeProfileId === location.addedBy
                       ? `<button id="remove-${location.id}" style="font-size: 15px; color: #FF3B30; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Remove</button>`
@@ -405,6 +437,43 @@ const MapView: React.FC = () => {
               });
               infoButton.addEventListener("mouseout", () => {
                 infoButton.style.backgroundColor = "transparent";
+              });
+              infoButton.addEventListener("click", () => {
+                setSelectedLocation(location.id);
+                setShowReviewPanel(false);
+
+                // Fetch business hours when location is selected
+                if (location.placeId) {
+                  setIsLoadingHours(true);
+                  setBusinessHours(null);
+                  fetchAndUpdateBusinessHours(location.id)
+                    .then((hours) => {
+                      setBusinessHours(hours);
+                      setIsLoadingHours(false);
+                    })
+                    .catch((error) => {
+                      console.error("Error fetching business hours:", error);
+                      setIsLoadingHours(false);
+                    });
+                }
+              });
+            }
+
+            const reviewButton = document.getElementById(
+              `review-${location.id}`,
+            );
+            if (reviewButton) {
+              reviewButton.addEventListener("mouseover", () => {
+                reviewButton.style.backgroundColor = "rgba(255, 149, 0, 0.1)";
+              });
+              reviewButton.addEventListener("mouseout", () => {
+                reviewButton.style.backgroundColor = "transparent";
+              });
+              reviewButton.addEventListener("click", () => {
+                setSelectedLocation(location.id);
+                setShowReviewPanel(true);
+                setReviewRating(5);
+                setReviewComment("");
               });
             }
 
@@ -446,6 +515,15 @@ const MapView: React.FC = () => {
   useEffect(() => {
     updateMapMarkers();
   }, [locations, commonLocationIds, mapIsReady]);
+
+  // Update all locations' open status when component mounts
+  useEffect(() => {
+    if (Object.keys(locations).length > 0) {
+      updateAllLocationsOpenStatus().catch((error) => {
+        console.error("Error updating locations open status:", error);
+      });
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -710,7 +788,42 @@ const MapView: React.FC = () => {
                             className="font-medium flex items-center justify-between"
                             style={{ fontSize: "15px" }}
                           >
-                            <span>{location.name}</span>
+                            <div className="flex items-center gap-1">
+                              <span>{location.name}</span>
+                              {location.isOpen !== undefined &&
+                                location.isOpen !== null && (
+                                  <span
+                                    className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${
+                                      location.isOpen
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-red-100 text-red-700"
+                                    }`}
+                                  >
+                                    {location.isOpen ? "Open" : "Closed"}
+                                  </span>
+                                )}
+                            </div>
+                            {location.reviews &&
+                              location.reviews.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Star
+                                    className="h-3 w-3"
+                                    fill={appleColors.yellow}
+                                    stroke={appleColors.yellow}
+                                  />
+                                  <span
+                                    className="text-xs"
+                                    style={{
+                                      color: appleColors.text.secondary,
+                                    }}
+                                  >
+                                    {location.reviews.reduce(
+                                      (sum, review) => sum + review.rating,
+                                      0,
+                                    ) / location.reviews.length}
+                                  </span>
+                                </div>
+                              )}
                           </div>
 
                           {location.description && (
@@ -739,17 +852,33 @@ const MapView: React.FC = () => {
                                   : `Added by ${userNames[location.addedBy] || "Anonymous"}`}
                               </span>
                             </div>
-                            {category && (
-                              <span
-                                className="text-xs px-1.5 py-0.5 rounded-full"
-                                style={{
-                                  backgroundColor: `${category.color}1A`,
-                                  color: category.color,
-                                }}
-                              >
-                                {category.name}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {location.reviews &&
+                                location.reviews.length > 0 && (
+                                  <span
+                                    className="text-xs"
+                                    style={{
+                                      color: appleColors.text.secondary,
+                                    }}
+                                  >
+                                    {location.reviews.length}{" "}
+                                    {location.reviews.length === 1
+                                      ? "review"
+                                      : "reviews"}
+                                  </span>
+                                )}
+                              {category && (
+                                <span
+                                  className="text-xs px-1.5 py-0.5 rounded-full ml-1"
+                                  style={{
+                                    backgroundColor: `${category.color}1A`,
+                                    color: category.color,
+                                  }}
+                                >
+                                  {category.name}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -850,6 +979,399 @@ const MapView: React.FC = () => {
                 >
                   Dismiss
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Location Details Panel */}
+          {selectedLocation && !showReviewPanel && (
+            <div
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-xl shadow-lg z-[10000] transition-transform transform translate-y-0 max-h-[80vh] md:max-h-[60%] flex flex-col"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                borderTopLeftRadius: "16px",
+                borderTopRightRadius: "16px",
+                boxShadow: "0 -2px 20px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              {/* Apple-style header */}
+              <div
+                className="p-4 flex items-center justify-between"
+                style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+              >
+                <button
+                  onClick={() => {
+                    setSelectedLocation(null);
+                    setBusinessHours(null);
+                  }}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Close
+                </button>
+                <h3
+                  className="font-semibold text-base md:text-lg"
+                  style={{
+                    fontFamily:
+                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+                  }}
+                >
+                  Location Details
+                </h3>
+                <button
+                  onClick={() => setShowReviewPanel(true)}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Add Review
+                </button>
+              </div>
+
+              {/* Location Details */}
+              <div className="p-4 overflow-y-auto">
+                {locations[selectedLocation] && (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold mb-2">
+                        {locations[selectedLocation].name}
+                      </h2>
+                      {locations[selectedLocation].description && (
+                        <p className="text-gray-700 mb-4">
+                          {locations[selectedLocation].description}
+                        </p>
+                      )}
+
+                      {/* Category */}
+                      {locations[selectedLocation].category &&
+                        categories[locations[selectedLocation].category] && (
+                          <div className="flex items-center gap-2 mb-4">
+                            <span
+                              className="w-3 h-3 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  categories[
+                                    locations[selectedLocation].category
+                                  ].color,
+                              }}
+                            ></span>
+                            <span className="text-sm text-gray-600">
+                              {
+                                categories[locations[selectedLocation].category]
+                                  .name
+                              }
+                            </span>
+                          </div>
+                        )}
+
+                      {/* Added by */}
+                      <div className="text-sm text-gray-600 mb-4">
+                        Added by:{" "}
+                        {activeProfileId === locations[selectedLocation].addedBy
+                          ? "You"
+                          : userNames[locations[selectedLocation].addedBy] ||
+                            "Anonymous"}
+                      </div>
+
+                      {/* Coordinates */}
+                      <div className="text-sm text-gray-600 mb-4">
+                        Coordinates:{" "}
+                        {locations[selectedLocation].latitude.toFixed(6)},{" "}
+                        {locations[selectedLocation].longitude.toFixed(6)}
+                      </div>
+
+                      {/* Business Hours Section */}
+                      {locations[selectedLocation].placeId && (
+                        <div className="mb-4">
+                          <h3 className="text-md font-semibold mb-2 flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            Business Hours
+                          </h3>
+
+                          {isLoadingHours ? (
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                              <span>Loading hours...</span>
+                            </div>
+                          ) : businessHours ? (
+                            <div>
+                              <div className="text-sm mb-2">
+                                <span
+                                  className={`font-medium ${businessHours.isOpen ? "text-green-600" : "text-red-600"}`}
+                                >
+                                  {businessHours.isOpen
+                                    ? "Open now"
+                                    : "Closed now"}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                {businessHours.weekdayText.map((day, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex justify-between"
+                                  >
+                                    <span>{day.split(": ")[0]}</span>
+                                    <span>{day.split(": ")[1]}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500">
+                              No business hours available
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Reviews Section */}
+                      <div className="mt-6">
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                          <MessageSquare className="h-5 w-5" />
+                          Reviews
+                        </h3>
+
+                        {!locations[selectedLocation].reviews ||
+                        locations[selectedLocation].reviews.length === 0 ? (
+                          <div className="text-gray-500 text-sm">
+                            No reviews yet. Be the first to add a review!
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {locations[selectedLocation].reviews?.map(
+                              (review) => {
+                                const reviewer =
+                                  userNames[review.userId] || "Anonymous";
+                                const isCurrentUser =
+                                  review.userId === activeProfileId;
+
+                                return (
+                                  <div
+                                    key={review.id}
+                                    className="p-4 rounded-lg"
+                                    style={{
+                                      backgroundColor: "rgba(0, 0, 0, 0.03)",
+                                    }}
+                                  >
+                                    <div className="flex justify-between items-start">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="flex">
+                                          {[...Array(5)].map((_, i) => (
+                                            <Star
+                                              key={i}
+                                              className="h-4 w-4"
+                                              fill={
+                                                i < review.rating
+                                                  ? appleColors.yellow
+                                                  : "none"
+                                              }
+                                              stroke={
+                                                i < review.rating
+                                                  ? appleColors.yellow
+                                                  : appleColors.gray.dark
+                                              }
+                                            />
+                                          ))}
+                                        </div>
+                                        <span className="text-sm font-medium">
+                                          {isCurrentUser ? "You" : reviewer}
+                                        </span>
+                                      </div>
+
+                                      {isCurrentUser && (
+                                        <button
+                                          onClick={() =>
+                                            removeReview(
+                                              selectedLocation,
+                                              review.id,
+                                            )
+                                          }
+                                          className="text-xs text-red-500"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <p className="text-sm text-gray-700">
+                                      {review.comment}
+                                    </p>
+
+                                    <div className="text-xs text-gray-500 mt-2">
+                                      {new Date(
+                                        review.createdAt,
+                                      ).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => setShowReviewPanel(true)}
+                          className="mt-4 w-full py-2 rounded-lg font-medium text-sm"
+                          style={{
+                            backgroundColor: appleColors.blue,
+                            color: "white",
+                          }}
+                        >
+                          Add Your Review
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Review Form Panel */}
+          {selectedLocation && showReviewPanel && (
+            <div
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-xl shadow-lg z-[10000] transition-transform transform translate-y-0 max-h-[80vh] md:max-h-[60%] flex flex-col"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                borderTopLeftRadius: "16px",
+                borderTopRightRadius: "16px",
+                boxShadow: "0 -2px 20px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              {/* Apple-style header */}
+              <div
+                className="p-4 flex items-center justify-between"
+                style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+              >
+                <button
+                  onClick={() => setShowReviewPanel(false)}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Back
+                </button>
+                <h3
+                  className="font-semibold text-base md:text-lg"
+                  style={{
+                    fontFamily:
+                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+                  }}
+                >
+                  Add Review
+                </h3>
+                <button
+                  onClick={() => {
+                    if (reviewComment.trim()) {
+                      addReview(selectedLocation, reviewRating, reviewComment);
+                      setShowReviewPanel(false);
+                    }
+                  }}
+                  disabled={!reviewComment.trim()}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{
+                    color: reviewComment.trim()
+                      ? appleColors.blue
+                      : appleColors.gray.dark,
+                    opacity: reviewComment.trim() ? 1 : 0.5,
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+
+              {/* Review Form */}
+              <div className="p-4 overflow-y-auto">
+                {locations[selectedLocation] && (
+                  <div className="flex flex-col gap-4">
+                    <h2 className="text-lg font-medium mb-2">
+                      {locations[selectedLocation].name}
+                    </h2>
+
+                    {/* Rating */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">
+                        Your Rating
+                      </label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((rating) => (
+                          <button
+                            key={rating}
+                            type="button"
+                            onClick={() => setReviewRating(rating)}
+                            className="p-2"
+                          >
+                            <Star
+                              className="h-8 w-8"
+                              fill={
+                                rating <= reviewRating
+                                  ? appleColors.yellow
+                                  : "none"
+                              }
+                              stroke={
+                                rating <= reviewRating
+                                  ? appleColors.yellow
+                                  : appleColors.gray.dark
+                              }
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Review Comment */}
+                    <div>
+                      <label
+                        htmlFor="review-comment"
+                        className="block text-sm font-medium mb-2 text-gray-700"
+                      >
+                        Your Review
+                      </label>
+                      <textarea
+                        id="review-comment"
+                        rows={5}
+                        placeholder="Share your experience with this place..."
+                        className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: appleColors.gray.medium,
+                          borderRadius: "10px",
+                          fontSize: "15px",
+                          resize: "none",
+                        }}
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (reviewComment.trim()) {
+                          addReview(
+                            selectedLocation,
+                            reviewRating,
+                            reviewComment,
+                          );
+                          setShowReviewPanel(false);
+                        }
+                      }}
+                      disabled={!reviewComment.trim()}
+                      className="mt-4 w-full py-3 rounded-lg font-medium"
+                      style={{
+                        backgroundColor: reviewComment.trim()
+                          ? appleColors.blue
+                          : appleColors.gray.light,
+                        color: reviewComment.trim()
+                          ? "white"
+                          : appleColors.gray.dark,
+                        opacity: reviewComment.trim() ? 1 : 0.7,
+                      }}
+                    >
+                      Submit Review
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
