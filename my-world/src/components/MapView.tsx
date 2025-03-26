@@ -1,14 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocationStore, useUserStore, useCategoryStore } from "../stores";
-import {
-  User,
-  MapPin,
-  Menu,
-  ChevronLeft,
-  Info,
-  Filter,
-  Locate,
-} from "lucide-react";
+import { User, MapPin, Menu, ChevronLeft, Info, Filter } from "lucide-react";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
@@ -23,7 +15,7 @@ declare global {
 
 const getMapKitToken = async (): Promise<string> => {
   // Use environment variable for the MapKit token
-  const token = import.meta.env.MAPKIT_TOKEN || process.env.MAPKIT_TOKEN;
+  const token = import.meta.env.MAPKIT_TOKEN;
 
   if (!token) {
     console.error("MapKit token not found in environment variables");
@@ -98,7 +90,7 @@ const MapView: React.FC = () => {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  // const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
   // Get the active user profile
@@ -213,11 +205,10 @@ const MapView: React.FC = () => {
     longitude: number,
     name: string,
     placeId?: string,
-    place?: any, // Accept the full place object
   ) => {
     // Update state with the selected location
     // If we have the full place object, extract the ID from it
-    const effectivePlaceId = place?.id || placeId || "";
+    const effectivePlaceId = placeId || "";
 
     setNewLocation({
       ...newLocation,
@@ -298,288 +289,6 @@ const MapView: React.FC = () => {
       mapInstanceRef.current.addAnnotation(marker);
       markersRef.current.push(marker);
     }
-  };
-
-  // Function to show Apple Maps place info
-  const showPlaceInfo = (
-    placeId: string,
-    latitude: number,
-    longitude: number,
-  ) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    // If we have a place ID, try to use it directly
-    if (placeId) {
-      try {
-        // Create a new Search instance with the current map region
-        const search = new window.mapkit.Search({
-          region: mapInstanceRef.current.region,
-        });
-
-        // Use search.search method with the place ID
-        search.search(placeId, (error: any, data: any) => {
-          if (error) {
-            console.error("Error looking up place:", error);
-            // Fall back to geocoding
-            fallbackToGeocode(latitude, longitude);
-            return;
-          }
-
-          if (data && data.places && data.places.length > 0) {
-            const place = data.places[0];
-            // Center the map on the place
-            mapInstanceRef.current.center = place.coordinate;
-
-            // Show the place details - use the mapItem property which is a valid annotation
-            if (place.mapItem) {
-              mapInstanceRef.current.showItems([place.mapItem]);
-            } else {
-              // If no mapItem is available, create a marker annotation
-              const annotation = new window.mapkit.MarkerAnnotation(
-                place.coordinate,
-                {
-                  title: place.name,
-                  subtitle: place.formattedAddress || "",
-                  selected: true,
-                },
-              );
-              mapInstanceRef.current.showItems([annotation]);
-            }
-          } else {
-            // Fall back to geocoding
-            fallbackToGeocode(latitude, longitude);
-          }
-        });
-      } catch (error) {
-        console.error("Error with place info lookup:", error);
-        fallbackToGeocode(latitude, longitude);
-      }
-    } else {
-      // If no place ID, fall back to geocoding
-      fallbackToGeocode(latitude, longitude);
-    }
-  };
-
-  // Fallback to geocoding when place ID lookup fails
-  const fallbackToGeocode = (latitude: number, longitude: number) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    const geocoder = new window.mapkit.Geocoder();
-    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
-
-    geocoder.reverseLookup(coordinate, (error: any, data: any) => {
-      if (error) {
-        console.error("Geocoding error:", error);
-        return;
-      }
-
-      if (data && data.results && data.results.length > 0) {
-        const result = data.results[0];
-        // Center the map on the place
-        mapInstanceRef.current.center = coordinate;
-        // Try to show place details
-        if (result.mapItem) {
-          mapInstanceRef.current.showItems([result.mapItem]);
-        }
-      }
-    });
-  };
-
-  // Function to get current location
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser");
-      return;
-    }
-
-    setIsGettingLocation(true);
-    setLocationError(null);
-
-    // Try to use high accuracy first
-    const getLocationWithOptions = (options: any) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-
-          // Center map on current location
-          setMapCenter([latitude, longitude]);
-          setMapZoom(15);
-
-          // Add a temporary marker for current location
-          if (mapIsReady && mapInstanceRef.current) {
-            // Remove any existing temporary marker
-            const tempMarker = markersRef.current.find((m) => m.isTemporary);
-            if (tempMarker) {
-              mapInstanceRef.current.removeAnnotation(tempMarker);
-              markersRef.current = markersRef.current.filter(
-                (m) => !m.isTemporary,
-              );
-            }
-
-            // Create a special marker for current location
-            const coordinate = new window.mapkit.Coordinate(
-              latitude,
-              longitude,
-            );
-            const marker = new window.mapkit.MarkerAnnotation(coordinate, {
-              color: "#007AFF", // Apple blue for current location
-              title: "Current Location",
-              glyphText: "•",
-              animates: true,
-              selected: true,
-            });
-
-            // Mark it as temporary and as current location
-            marker.isTemporary = true;
-            marker.isCurrentLocation = true;
-
-            // Add to map
-            try {
-              mapInstanceRef.current.addAnnotation(marker);
-              markersRef.current.push(marker);
-
-              // Reverse geocode to get location name
-              reverseGeocodeCurrentLocation(latitude, longitude);
-            } catch (error) {
-              console.error("Error adding current location annotation:", error);
-            }
-          }
-
-          setIsGettingLocation(false);
-        },
-        (error) => {
-          // If high accuracy fails and we haven't tried low accuracy yet, try with low accuracy
-          if (options.enableHighAccuracy && error.code === 2) {
-            console.log(
-              "High accuracy location failed, trying with low accuracy",
-            );
-            getLocationWithOptions({
-              enableHighAccuracy: false,
-              timeout: 20000,
-              maximumAge: 30000, // Allow a cached position up to 30 seconds old
-            });
-          } else {
-            // Handle error
-            let errorMessage = "Error getting location";
-
-            // Provide more specific error messages based on error code
-            switch (error.code) {
-              case 1: // PERMISSION_DENIED
-                errorMessage =
-                  "Location access denied. Please check your browser permissions.";
-                break;
-              case 2: // POSITION_UNAVAILABLE
-                errorMessage =
-                  "Your location is currently unavailable. Please try again outdoors or with better GPS signal.";
-                break;
-              case 3: // TIMEOUT
-                errorMessage = "Location request timed out. Please try again.";
-                break;
-              default:
-                errorMessage = `Error getting location: ${error.message}`;
-            }
-
-            setLocationError(errorMessage);
-            setIsGettingLocation(false);
-            console.error("Geolocation error:", error);
-          }
-        },
-        options,
-      );
-    };
-
-    // Start with high accuracy
-    getLocationWithOptions({
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0,
-    });
-  };
-
-  // Reverse geocode current location to get address
-  const reverseGeocodeCurrentLocation = (
-    latitude: number,
-    longitude: number,
-  ) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    const geocoder = new window.mapkit.Geocoder();
-    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
-
-    geocoder.reverseLookup(coordinate, (error: any, data: any) => {
-      if (error) {
-        console.error("Geocoding error:", error);
-        return;
-      }
-
-      if (data && data.results && data.results.length > 0) {
-        const result = data.results[0];
-        const placeName = result.name || "Current Location";
-
-        // Update the temporary marker with the place name
-        const tempMarker = markersRef.current.find((m) => m.isTemporary);
-        if (tempMarker) {
-          tempMarker.title = placeName;
-
-          // Add a callout to the marker with an option to save this location
-          tempMarker.callout = {
-            calloutElementForAnnotation: () => {
-              const calloutElement = document.createElement("div");
-              calloutElement.className = "mapkit-callout";
-
-              // Apply Apple-style CSS
-              calloutElement.style.padding = "16px";
-              calloutElement.style.maxWidth = "280px";
-              calloutElement.style.backgroundColor = "white";
-              calloutElement.style.borderRadius = "14px";
-              calloutElement.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.12)";
-              calloutElement.style.border = "none";
-              calloutElement.style.fontFamily =
-                "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-
-              calloutElement.innerHTML = `
-                <h3 style="font-weight: 600; font-size: 17px; margin-bottom: 6px; color: #000;">${placeName}</h3>
-                <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
-                  Your current location
-                </p>
-                <div style="display: flex; gap: 12px; margin-top: 12px;">
-                  <button id="save-current-location" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Save This Location</button>
-                </div>
-              `;
-
-              // Add event listeners for buttons with hover effects
-              setTimeout(() => {
-                const saveButton = document.getElementById(
-                  "save-current-location",
-                );
-                if (saveButton) {
-                  saveButton.addEventListener("mouseover", () => {
-                    saveButton.style.backgroundColor = "rgba(0, 122, 255, 0.1)";
-                  });
-                  saveButton.addEventListener("mouseout", () => {
-                    saveButton.style.backgroundColor = "transparent";
-                  });
-                  saveButton.addEventListener("click", () => {
-                    // Prepare to add this location
-                    setNewLocation({
-                      name: placeName,
-                      description: "My current location",
-                      latitude: latitude,
-                      longitude: longitude,
-                      placeId: "",
-                      category: "default",
-                    });
-                    setIsAddingLocation(true);
-                  });
-                }
-              }, 0);
-
-              return calloutElement;
-            },
-          };
-        }
-      }
-    });
   };
 
   // Function to update map markers
@@ -696,13 +405,6 @@ const MapView: React.FC = () => {
               });
               infoButton.addEventListener("mouseout", () => {
                 infoButton.style.backgroundColor = "transparent";
-              });
-              infoButton.addEventListener("click", () => {
-                showPlaceInfo(
-                  location.placeId || "",
-                  location.latitude,
-                  location.longitude,
-                );
               });
             }
 
@@ -1002,21 +704,15 @@ const MapView: React.FC = () => {
                             ]);
                             setMapZoom(15);
                             setSidebarOpen(false);
-
-                            // Show place details using MapKit API
-                            showPlaceInfo(
-                              location.placeId || "",
-                              location.latitude,
-                              location.longitude,
-                            );
                           }}
                         >
                           <div
-                            className="font-medium"
+                            className="font-medium flex items-center justify-between"
                             style={{ fontSize: "15px" }}
                           >
-                            {location.name}
+                            <span>{location.name}</span>
                           </div>
+
                           {location.description && (
                             <div
                               className="text-xs mt-0.5 line-clamp-1"
@@ -1097,8 +793,8 @@ const MapView: React.FC = () => {
           <div className="absolute top-4 left-4 z-[900] pointer-events-none">
             <div className="w-80 pointer-events-auto">
               <PlaceSearch
-                onPlaceSelect={(latitude, longitude, name, placeId, place) => {
-                  handlePlaceSelect(latitude, longitude, name, placeId, place);
+                onPlaceSelect={(latitude, longitude, name, placeId) => {
+                  handlePlaceSelect(latitude, longitude, name, placeId);
                   setIsAddingLocation(true);
                 }}
               />
@@ -1106,24 +802,24 @@ const MapView: React.FC = () => {
           </div>
 
           {/* Current location button - aligned to bottom right */}
-          <div className="absolute bottom-24 right-4 z-[900]">
-            <button
-              onClick={getCurrentLocation}
-              disabled={isGettingLocation}
-              className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all"
-              style={{
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                opacity: isGettingLocation ? 0.7 : 1,
-              }}
-              aria-label="Get current location"
-            >
-              <Locate
-                className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`}
-                style={{ color: appleColors.blue }}
-              />
-            </button>
-          </div>
+          {/* <div className="absolute bottom-24 right-4 z-[900]"> */}
+          {/*   <button */}
+          {/*     onClick={getCurrentLocation} */}
+          {/*     disabled={isGettingLocation} */}
+          {/*     className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all" */}
+          {/*     style={{ */}
+          {/*       boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)", */}
+          {/*       border: "1px solid rgba(0, 0, 0, 0.1)", */}
+          {/*       opacity: isGettingLocation ? 0.7 : 1, */}
+          {/*     }} */}
+          {/*     aria-label="Get current location" */}
+          {/*   > */}
+          {/*     <Locate */}
+          {/*       className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`} */}
+          {/*       style={{ color: appleColors.blue }} */}
+          {/*     /> */}
+          {/*   </button> */}
+          {/* </div> */}
 
           {/* Location error message */}
           {locationError && (

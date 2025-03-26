@@ -12,6 +12,7 @@ export interface Location {
   createdAt: number;
   placeId: string;
   category: string;
+  isOpen?: boolean | null;
 }
 
 export interface LocationState {
@@ -28,7 +29,6 @@ export interface LocationState {
     id: string,
     updates: Partial<Omit<Location, "id" | "addedBy" | "createdAt">>,
   ) => void;
-  // Add a new action to update the user name mapping
   updateUserName: (userId: string, name: string) => void;
 }
 
