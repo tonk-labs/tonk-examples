@@ -1,0 +1,10 @@
+{
+  "name": "Wiseworth",
+  "plan": {
+    "projectName": "Wiseworth",
+    "projectType": "Professional Services",
+    "platform": "react",
+    "description": "It's an application that will help me to make wise financial decisions. I can start a \"report\" about a particular stock or investment plan. Then I can drop in links or information about that investment plan. These links and information can be used by an LLM to help me make good decisions about that stock or investment. Everytime I open the application, it should refresh the latest data about stocks or relevant financial vehicles in that report by using Yahoo Finance API."
+  },
+  "template": "react"
+}
