@@ -29,7 +29,6 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AppleSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInstance = useRef<any>(null);
@@ -48,7 +47,6 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
         searchRef.current &&
         !searchRef.current.contains(event.target as Node)
       ) {
-        setIsOpen(false);
         setIsFocused(false);
       }
     };
@@ -68,11 +66,11 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
 
     setIsLoading(true);
 
-    // Make sure search instance is initialized
     if (!searchInstance.current) {
       searchInstance.current = new window.mapkit.Search({
         includePointsOfInterest: true,
         includeAddresses: true,
+        includePhysicalFeatures: true,
         autocomplete: true,
       });
     }
@@ -88,21 +86,19 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
       }
 
       if (data && data.places) {
-        // Transform the results to our format
+        // Transform theresults to our format
         const mappedResults: AppleSearchResult[] = data.places.map(
           (place: any) => ({
             displayLines: place.displayLines || [place.name],
             coordinate: place.coordinate,
             name: place.name,
             formattedAddress: place.formattedAddress,
-            place: place,
-            placeId: place.mapItem?.identifier || place.id,
+            placeId: place.id,
             category: place.pointOfInterestCategory || "",
           }),
         );
 
         setResults(mappedResults);
-        setIsOpen(true);
       } else {
         setResults([]);
       }
@@ -116,7 +112,6 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
         searchPlaces(query);
       } else {
         setResults([]);
-        setIsOpen(false);
       }
     }, 300); // Reduced debounce time for more responsive feel
 
@@ -130,11 +125,10 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
       result.coordinate.longitude,
       result.name,
       result.placeId,
-      result.place, // Pass the full place object
+      result.place,
     );
     setQuery("");
     setResults([]);
-    setIsOpen(false);
   };
 
   // Get category icon (simplified version)
@@ -199,7 +193,7 @@ const PlaceSearch: React.FC<PlaceSearchProps> = ({ onPlaceSelect }) => {
       </div>
 
       {/* Search Results Dropdown - Apple-style */}
-      {isOpen && results.length > 0 && (
+      {results.length > 0 && (
         <div
           className="absolute w-full mt-2 bg-white rounded-xl max-h-80 overflow-y-auto search-results z-10"
           style={{

@@ -7,8 +7,15 @@ import {
   ChevronLeft,
   Info,
   Filter,
-  Locate,
+  Star,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
+import {
+  fetchAndUpdateBusinessHours,
+  BusinessHours,
+  updateAllLocationsOpenStatus,
+} from "../services/googleMapsService";
 import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
@@ -23,7 +30,7 @@ declare global {
 
 const getMapKitToken = async (): Promise<string> => {
   // Use environment variable for the MapKit token
-  const token = import.meta.env.MAPKIT_TOKEN || process.env.MAPKIT_TOKEN;
+  const token = import.meta.env.MAPKIT_TOKEN;
 
   if (!token) {
     console.error("MapKit token not found in environment variables");
@@ -75,7 +82,8 @@ const MapKitInitializer: React.FC<MapKitInitializerProps> = ({}) => {
 };
 
 const MapView: React.FC = () => {
-  const { locations, addLocation, removeLocation } = useLocationStore();
+  const { locations, addLocation, removeLocation, addReview, removeReview } =
+    useLocationStore();
   const { profiles, activeProfileId } = useUserStore();
   const { categories } = useCategoryStore();
   const [isAddingLocation, setIsAddingLocation] = useState(false);
@@ -98,8 +106,16 @@ const MapView: React.FC = () => {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  // const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [businessHours, setBusinessHours] = useState<BusinessHours | null>(
+    null,
+  );
+  const [isLoadingHours, setIsLoadingHours] = useState(false);
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -213,11 +229,10 @@ const MapView: React.FC = () => {
     longitude: number,
     name: string,
     placeId?: string,
-    place?: any, // Accept the full place object
   ) => {
     // Update state with the selected location
     // If we have the full place object, extract the ID from it
-    const effectivePlaceId = place?.id || placeId || "";
+    const effectivePlaceId = placeId || "";
 
     setNewLocation({
       ...newLocation,
@@ -298,288 +313,6 @@ const MapView: React.FC = () => {
       mapInstanceRef.current.addAnnotation(marker);
       markersRef.current.push(marker);
     }
-  };
-
-  // Function to show Apple Maps place info
-  const showPlaceInfo = (
-    placeId: string,
-    latitude: number,
-    longitude: number,
-  ) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    // If we have a place ID, try to use it directly
-    if (placeId) {
-      try {
-        // Create a new Search instance with the current map region
-        const search = new window.mapkit.Search({
-          region: mapInstanceRef.current.region,
-        });
-
-        // Use search.search method with the place ID
-        search.search(placeId, (error: any, data: any) => {
-          if (error) {
-            console.error("Error looking up place:", error);
-            // Fall back to geocoding
-            fallbackToGeocode(latitude, longitude);
-            return;
-          }
-
-          if (data && data.places && data.places.length > 0) {
-            const place = data.places[0];
-            // Center the map on the place
-            mapInstanceRef.current.center = place.coordinate;
-
-            // Show the place details - use the mapItem property which is a valid annotation
-            if (place.mapItem) {
-              mapInstanceRef.current.showItems([place.mapItem]);
-            } else {
-              // If no mapItem is available, create a marker annotation
-              const annotation = new window.mapkit.MarkerAnnotation(
-                place.coordinate,
-                {
-                  title: place.name,
-                  subtitle: place.formattedAddress || "",
-                  selected: true,
-                },
-              );
-              mapInstanceRef.current.showItems([annotation]);
-            }
-          } else {
-            // Fall back to geocoding
-            fallbackToGeocode(latitude, longitude);
-          }
-        });
-      } catch (error) {
-        console.error("Error with place info lookup:", error);
-        fallbackToGeocode(latitude, longitude);
-      }
-    } else {
-      // If no place ID, fall back to geocoding
-      fallbackToGeocode(latitude, longitude);
-    }
-  };
-
-  // Fallback to geocoding when place ID lookup fails
-  const fallbackToGeocode = (latitude: number, longitude: number) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    const geocoder = new window.mapkit.Geocoder();
-    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
-
-    geocoder.reverseLookup(coordinate, (error: any, data: any) => {
-      if (error) {
-        console.error("Geocoding error:", error);
-        return;
-      }
-
-      if (data && data.results && data.results.length > 0) {
-        const result = data.results[0];
-        // Center the map on the place
-        mapInstanceRef.current.center = coordinate;
-        // Try to show place details
-        if (result.mapItem) {
-          mapInstanceRef.current.showItems([result.mapItem]);
-        }
-      }
-    });
-  };
-
-  // Function to get current location
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser");
-      return;
-    }
-
-    setIsGettingLocation(true);
-    setLocationError(null);
-
-    // Try to use high accuracy first
-    const getLocationWithOptions = (options: any) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-
-          // Center map on current location
-          setMapCenter([latitude, longitude]);
-          setMapZoom(15);
-
-          // Add a temporary marker for current location
-          if (mapIsReady && mapInstanceRef.current) {
-            // Remove any existing temporary marker
-            const tempMarker = markersRef.current.find((m) => m.isTemporary);
-            if (tempMarker) {
-              mapInstanceRef.current.removeAnnotation(tempMarker);
-              markersRef.current = markersRef.current.filter(
-                (m) => !m.isTemporary,
-              );
-            }
-
-            // Create a special marker for current location
-            const coordinate = new window.mapkit.Coordinate(
-              latitude,
-              longitude,
-            );
-            const marker = new window.mapkit.MarkerAnnotation(coordinate, {
-              color: "#007AFF", // Apple blue for current location
-              title: "Current Location",
-              glyphText: "•",
-              animates: true,
-              selected: true,
-            });
-
-            // Mark it as temporary and as current location
-            marker.isTemporary = true;
-            marker.isCurrentLocation = true;
-
-            // Add to map
-            try {
-              mapInstanceRef.current.addAnnotation(marker);
-              markersRef.current.push(marker);
-
-              // Reverse geocode to get location name
-              reverseGeocodeCurrentLocation(latitude, longitude);
-            } catch (error) {
-              console.error("Error adding current location annotation:", error);
-            }
-          }
-
-          setIsGettingLocation(false);
-        },
-        (error) => {
-          // If high accuracy fails and we haven't tried low accuracy yet, try with low accuracy
-          if (options.enableHighAccuracy && error.code === 2) {
-            console.log(
-              "High accuracy location failed, trying with low accuracy",
-            );
-            getLocationWithOptions({
-              enableHighAccuracy: false,
-              timeout: 20000,
-              maximumAge: 30000, // Allow a cached position up to 30 seconds old
-            });
-          } else {
-            // Handle error
-            let errorMessage = "Error getting location";
-
-            // Provide more specific error messages based on error code
-            switch (error.code) {
-              case 1: // PERMISSION_DENIED
-                errorMessage =
-                  "Location access denied. Please check your browser permissions.";
-                break;
-              case 2: // POSITION_UNAVAILABLE
-                errorMessage =
-                  "Your location is currently unavailable. Please try again outdoors or with better GPS signal.";
-                break;
-              case 3: // TIMEOUT
-                errorMessage = "Location request timed out. Please try again.";
-                break;
-              default:
-                errorMessage = `Error getting location: ${error.message}`;
-            }
-
-            setLocationError(errorMessage);
-            setIsGettingLocation(false);
-            console.error("Geolocation error:", error);
-          }
-        },
-        options,
-      );
-    };
-
-    // Start with high accuracy
-    getLocationWithOptions({
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0,
-    });
-  };
-
-  // Reverse geocode current location to get address
-  const reverseGeocodeCurrentLocation = (
-    latitude: number,
-    longitude: number,
-  ) => {
-    if (!mapIsReady || !mapInstanceRef.current || !window.mapkit) return;
-
-    const geocoder = new window.mapkit.Geocoder();
-    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
-
-    geocoder.reverseLookup(coordinate, (error: any, data: any) => {
-      if (error) {
-        console.error("Geocoding error:", error);
-        return;
-      }
-
-      if (data && data.results && data.results.length > 0) {
-        const result = data.results[0];
-        const placeName = result.name || "Current Location";
-
-        // Update the temporary marker with the place name
-        const tempMarker = markersRef.current.find((m) => m.isTemporary);
-        if (tempMarker) {
-          tempMarker.title = placeName;
-
-          // Add a callout to the marker with an option to save this location
-          tempMarker.callout = {
-            calloutElementForAnnotation: () => {
-              const calloutElement = document.createElement("div");
-              calloutElement.className = "mapkit-callout";
-
-              // Apply Apple-style CSS
-              calloutElement.style.padding = "16px";
-              calloutElement.style.maxWidth = "280px";
-              calloutElement.style.backgroundColor = "white";
-              calloutElement.style.borderRadius = "14px";
-              calloutElement.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.12)";
-              calloutElement.style.border = "none";
-              calloutElement.style.fontFamily =
-                "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-
-              calloutElement.innerHTML = `
-                <h3 style="font-weight: 600; font-size: 17px; margin-bottom: 6px; color: #000;">${placeName}</h3>
-                <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
-                  Your current location
-                </p>
-                <div style="display: flex; gap: 12px; margin-top: 12px;">
-                  <button id="save-current-location" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Save This Location</button>
-                </div>
-              `;
-
-              // Add event listeners for buttons with hover effects
-              setTimeout(() => {
-                const saveButton = document.getElementById(
-                  "save-current-location",
-                );
-                if (saveButton) {
-                  saveButton.addEventListener("mouseover", () => {
-                    saveButton.style.backgroundColor = "rgba(0, 122, 255, 0.1)";
-                  });
-                  saveButton.addEventListener("mouseout", () => {
-                    saveButton.style.backgroundColor = "transparent";
-                  });
-                  saveButton.addEventListener("click", () => {
-                    // Prepare to add this location
-                    setNewLocation({
-                      name: placeName,
-                      description: "My current location",
-                      latitude: latitude,
-                      longitude: longitude,
-                      placeId: "",
-                      category: "default",
-                    });
-                    setIsAddingLocation(true);
-                  });
-                }
-              }, 0);
-
-              return calloutElement;
-            },
-          };
-        }
-      }
-    });
   };
 
   // Function to update map markers
@@ -668,6 +401,13 @@ const MapView: React.FC = () => {
                 <div style="display: flex; align-items: center; margin-bottom: 4px;">
                   <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${categoryColor}; margin-right: 6px;"></span>
                   <span style="font-size: 13px; color: #8E8E93;">${categoryName}</span>
+                  ${
+                    location.isOpen !== undefined && location.isOpen !== null
+                      ? `<span style="font-size: 12px; margin-left: 8px; padding: 2px 6px; border-radius: 10px; background-color: ${location.isOpen ? "rgba(52, 199, 89, 0.1)" : "rgba(255, 59, 48, 0.1)"}; color: ${location.isOpen ? "#34C759" : "#FF3B30"};">
+                      ${location.isOpen ? "Open" : "Closed"}
+                    </span>`
+                      : ""
+                  }
                 </div>
                 <p style="font-size: 13px; color: #8E8E93; margin-bottom: 4px;">
                   Added by: ${activeProfileId === location.addedBy ? "You" : userNames[location.addedBy] || "Anonymous"}
@@ -679,6 +419,7 @@ const MapView: React.FC = () => {
                 }
                 <div style="display: flex; gap: 12px; margin-top: 12px;">
                   <button id="info-${location.id}" style="font-size: 15px; color: #007AFF; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Show Details</button>
+                  <button id="review-${location.id}" style="font-size: 15px; color: #FF9500; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Add Review</button>
                   ${
                     activeProfileId === location.addedBy
                       ? `<button id="remove-${location.id}" style="font-size: 15px; color: #FF3B30; border: none; background: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-weight: 500; transition: background-color 0.2s;">Remove</button>`
@@ -698,11 +439,41 @@ const MapView: React.FC = () => {
                 infoButton.style.backgroundColor = "transparent";
               });
               infoButton.addEventListener("click", () => {
-                showPlaceInfo(
-                  location.placeId || "",
-                  location.latitude,
-                  location.longitude,
-                );
+                setSelectedLocation(location.id);
+                setShowReviewPanel(false);
+
+                // Fetch business hours when location is selected
+                if (location.placeId) {
+                  setIsLoadingHours(true);
+                  setBusinessHours(null);
+                  fetchAndUpdateBusinessHours(location.id)
+                    .then((hours) => {
+                      setBusinessHours(hours);
+                      setIsLoadingHours(false);
+                    })
+                    .catch((error) => {
+                      console.error("Error fetching business hours:", error);
+                      setIsLoadingHours(false);
+                    });
+                }
+              });
+            }
+
+            const reviewButton = document.getElementById(
+              `review-${location.id}`,
+            );
+            if (reviewButton) {
+              reviewButton.addEventListener("mouseover", () => {
+                reviewButton.style.backgroundColor = "rgba(255, 149, 0, 0.1)";
+              });
+              reviewButton.addEventListener("mouseout", () => {
+                reviewButton.style.backgroundColor = "transparent";
+              });
+              reviewButton.addEventListener("click", () => {
+                setSelectedLocation(location.id);
+                setShowReviewPanel(true);
+                setReviewRating(5);
+                setReviewComment("");
               });
             }
 
@@ -744,6 +515,15 @@ const MapView: React.FC = () => {
   useEffect(() => {
     updateMapMarkers();
   }, [locations, commonLocationIds, mapIsReady]);
+
+  // Update all locations' open status when component mounts
+  useEffect(() => {
+    if (Object.keys(locations).length > 0) {
+      updateAllLocationsOpenStatus().catch((error) => {
+        console.error("Error updating locations open status:", error);
+      });
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1002,21 +782,50 @@ const MapView: React.FC = () => {
                             ]);
                             setMapZoom(15);
                             setSidebarOpen(false);
-
-                            // Show place details using MapKit API
-                            showPlaceInfo(
-                              location.placeId || "",
-                              location.latitude,
-                              location.longitude,
-                            );
                           }}
                         >
                           <div
-                            className="font-medium"
+                            className="font-medium flex items-center justify-between"
                             style={{ fontSize: "15px" }}
                           >
-                            {location.name}
+                            <div className="flex items-center gap-1">
+                              <span>{location.name}</span>
+                              {location.isOpen !== undefined &&
+                                location.isOpen !== null && (
+                                  <span
+                                    className={`text-xs px-1.5 py-0.5 rounded-full ml-1 ${
+                                      location.isOpen
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-red-100 text-red-700"
+                                    }`}
+                                  >
+                                    {location.isOpen ? "Open" : "Closed"}
+                                  </span>
+                                )}
+                            </div>
+                            {location.reviews &&
+                              location.reviews.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Star
+                                    className="h-3 w-3"
+                                    fill={appleColors.yellow}
+                                    stroke={appleColors.yellow}
+                                  />
+                                  <span
+                                    className="text-xs"
+                                    style={{
+                                      color: appleColors.text.secondary,
+                                    }}
+                                  >
+                                    {location.reviews.reduce(
+                                      (sum, review) => sum + review.rating,
+                                      0,
+                                    ) / location.reviews.length}
+                                  </span>
+                                </div>
+                              )}
                           </div>
+
                           {location.description && (
                             <div
                               className="text-xs mt-0.5 line-clamp-1"
@@ -1043,17 +852,33 @@ const MapView: React.FC = () => {
                                   : `Added by ${userNames[location.addedBy] || "Anonymous"}`}
                               </span>
                             </div>
-                            {category && (
-                              <span
-                                className="text-xs px-1.5 py-0.5 rounded-full"
-                                style={{
-                                  backgroundColor: `${category.color}1A`,
-                                  color: category.color,
-                                }}
-                              >
-                                {category.name}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {location.reviews &&
+                                location.reviews.length > 0 && (
+                                  <span
+                                    className="text-xs"
+                                    style={{
+                                      color: appleColors.text.secondary,
+                                    }}
+                                  >
+                                    {location.reviews.length}{" "}
+                                    {location.reviews.length === 1
+                                      ? "review"
+                                      : "reviews"}
+                                  </span>
+                                )}
+                              {category && (
+                                <span
+                                  className="text-xs px-1.5 py-0.5 rounded-full ml-1"
+                                  style={{
+                                    backgroundColor: `${category.color}1A`,
+                                    color: category.color,
+                                  }}
+                                >
+                                  {category.name}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1097,8 +922,8 @@ const MapView: React.FC = () => {
           <div className="absolute top-4 left-4 z-[900] pointer-events-none">
             <div className="w-80 pointer-events-auto">
               <PlaceSearch
-                onPlaceSelect={(latitude, longitude, name, placeId, place) => {
-                  handlePlaceSelect(latitude, longitude, name, placeId, place);
+                onPlaceSelect={(latitude, longitude, name, placeId) => {
+                  handlePlaceSelect(latitude, longitude, name, placeId);
                   setIsAddingLocation(true);
                 }}
               />
@@ -1106,24 +931,24 @@ const MapView: React.FC = () => {
           </div>
 
           {/* Current location button - aligned to bottom right */}
-          <div className="absolute bottom-24 right-4 z-[900]">
-            <button
-              onClick={getCurrentLocation}
-              disabled={isGettingLocation}
-              className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all"
-              style={{
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)",
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-                opacity: isGettingLocation ? 0.7 : 1,
-              }}
-              aria-label="Get current location"
-            >
-              <Locate
-                className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`}
-                style={{ color: appleColors.blue }}
-              />
-            </button>
-          </div>
+          {/* <div className="absolute bottom-24 right-4 z-[900]"> */}
+          {/*   <button */}
+          {/*     onClick={getCurrentLocation} */}
+          {/*     disabled={isGettingLocation} */}
+          {/*     className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all" */}
+          {/*     style={{ */}
+          {/*       boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)", */}
+          {/*       border: "1px solid rgba(0, 0, 0, 0.1)", */}
+          {/*       opacity: isGettingLocation ? 0.7 : 1, */}
+          {/*     }} */}
+          {/*     aria-label="Get current location" */}
+          {/*   > */}
+          {/*     <Locate */}
+          {/*       className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`} */}
+          {/*       style={{ color: appleColors.blue }} */}
+          {/*     /> */}
+          {/*   </button> */}
+          {/* </div> */}
 
           {/* Location error message */}
           {locationError && (
@@ -1154,6 +979,399 @@ const MapView: React.FC = () => {
                 >
                   Dismiss
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Location Details Panel */}
+          {selectedLocation && !showReviewPanel && (
+            <div
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-xl shadow-lg z-[10000] transition-transform transform translate-y-0 max-h-[80vh] md:max-h-[60%] flex flex-col"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                borderTopLeftRadius: "16px",
+                borderTopRightRadius: "16px",
+                boxShadow: "0 -2px 20px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              {/* Apple-style header */}
+              <div
+                className="p-4 flex items-center justify-between"
+                style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+              >
+                <button
+                  onClick={() => {
+                    setSelectedLocation(null);
+                    setBusinessHours(null);
+                  }}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Close
+                </button>
+                <h3
+                  className="font-semibold text-base md:text-lg"
+                  style={{
+                    fontFamily:
+                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+                  }}
+                >
+                  Location Details
+                </h3>
+                <button
+                  onClick={() => setShowReviewPanel(true)}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Add Review
+                </button>
+              </div>
+
+              {/* Location Details */}
+              <div className="p-4 overflow-y-auto">
+                {locations[selectedLocation] && (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold mb-2">
+                        {locations[selectedLocation].name}
+                      </h2>
+                      {locations[selectedLocation].description && (
+                        <p className="text-gray-700 mb-4">
+                          {locations[selectedLocation].description}
+                        </p>
+                      )}
+
+                      {/* Category */}
+                      {locations[selectedLocation].category &&
+                        categories[locations[selectedLocation].category] && (
+                          <div className="flex items-center gap-2 mb-4">
+                            <span
+                              className="w-3 h-3 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  categories[
+                                    locations[selectedLocation].category
+                                  ].color,
+                              }}
+                            ></span>
+                            <span className="text-sm text-gray-600">
+                              {
+                                categories[locations[selectedLocation].category]
+                                  .name
+                              }
+                            </span>
+                          </div>
+                        )}
+
+                      {/* Added by */}
+                      <div className="text-sm text-gray-600 mb-4">
+                        Added by:{" "}
+                        {activeProfileId === locations[selectedLocation].addedBy
+                          ? "You"
+                          : userNames[locations[selectedLocation].addedBy] ||
+                            "Anonymous"}
+                      </div>
+
+                      {/* Coordinates */}
+                      <div className="text-sm text-gray-600 mb-4">
+                        Coordinates:{" "}
+                        {locations[selectedLocation].latitude.toFixed(6)},{" "}
+                        {locations[selectedLocation].longitude.toFixed(6)}
+                      </div>
+
+                      {/* Business Hours Section */}
+                      {locations[selectedLocation].placeId && (
+                        <div className="mb-4">
+                          <h3 className="text-md font-semibold mb-2 flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            Business Hours
+                          </h3>
+
+                          {isLoadingHours ? (
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                              <span>Loading hours...</span>
+                            </div>
+                          ) : businessHours ? (
+                            <div>
+                              <div className="text-sm mb-2">
+                                <span
+                                  className={`font-medium ${businessHours.isOpen ? "text-green-600" : "text-red-600"}`}
+                                >
+                                  {businessHours.isOpen
+                                    ? "Open now"
+                                    : "Closed now"}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                {businessHours.weekdayText.map((day, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex justify-between"
+                                  >
+                                    <span>{day.split(": ")[0]}</span>
+                                    <span>{day.split(": ")[1]}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500">
+                              No business hours available
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Reviews Section */}
+                      <div className="mt-6">
+                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                          <MessageSquare className="h-5 w-5" />
+                          Reviews
+                        </h3>
+
+                        {!locations[selectedLocation].reviews ||
+                        locations[selectedLocation].reviews.length === 0 ? (
+                          <div className="text-gray-500 text-sm">
+                            No reviews yet. Be the first to add a review!
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {locations[selectedLocation].reviews?.map(
+                              (review) => {
+                                const reviewer =
+                                  userNames[review.userId] || "Anonymous";
+                                const isCurrentUser =
+                                  review.userId === activeProfileId;
+
+                                return (
+                                  <div
+                                    key={review.id}
+                                    className="p-4 rounded-lg"
+                                    style={{
+                                      backgroundColor: "rgba(0, 0, 0, 0.03)",
+                                    }}
+                                  >
+                                    <div className="flex justify-between items-start">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="flex">
+                                          {[...Array(5)].map((_, i) => (
+                                            <Star
+                                              key={i}
+                                              className="h-4 w-4"
+                                              fill={
+                                                i < review.rating
+                                                  ? appleColors.yellow
+                                                  : "none"
+                                              }
+                                              stroke={
+                                                i < review.rating
+                                                  ? appleColors.yellow
+                                                  : appleColors.gray.dark
+                                              }
+                                            />
+                                          ))}
+                                        </div>
+                                        <span className="text-sm font-medium">
+                                          {isCurrentUser ? "You" : reviewer}
+                                        </span>
+                                      </div>
+
+                                      {isCurrentUser && (
+                                        <button
+                                          onClick={() =>
+                                            removeReview(
+                                              selectedLocation,
+                                              review.id,
+                                            )
+                                          }
+                                          className="text-xs text-red-500"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <p className="text-sm text-gray-700">
+                                      {review.comment}
+                                    </p>
+
+                                    <div className="text-xs text-gray-500 mt-2">
+                                      {new Date(
+                                        review.createdAt,
+                                      ).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => setShowReviewPanel(true)}
+                          className="mt-4 w-full py-2 rounded-lg font-medium text-sm"
+                          style={{
+                            backgroundColor: appleColors.blue,
+                            color: "white",
+                          }}
+                        >
+                          Add Your Review
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Review Form Panel */}
+          {selectedLocation && showReviewPanel && (
+            <div
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-xl shadow-lg z-[10000] transition-transform transform translate-y-0 max-h-[80vh] md:max-h-[60%] flex flex-col"
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                borderTopLeftRadius: "16px",
+                borderTopRightRadius: "16px",
+                boxShadow: "0 -2px 20px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              {/* Apple-style header */}
+              <div
+                className="p-4 flex items-center justify-between"
+                style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}
+              >
+                <button
+                  onClick={() => setShowReviewPanel(false)}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{ color: appleColors.blue }}
+                >
+                  Back
+                </button>
+                <h3
+                  className="font-semibold text-base md:text-lg"
+                  style={{
+                    fontFamily:
+                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+                  }}
+                >
+                  Add Review
+                </h3>
+                <button
+                  onClick={() => {
+                    if (reviewComment.trim()) {
+                      addReview(selectedLocation, reviewRating, reviewComment);
+                      setShowReviewPanel(false);
+                    }
+                  }}
+                  disabled={!reviewComment.trim()}
+                  className="text-sm font-medium px-3 py-1 rounded-full"
+                  style={{
+                    color: reviewComment.trim()
+                      ? appleColors.blue
+                      : appleColors.gray.dark,
+                    opacity: reviewComment.trim() ? 1 : 0.5,
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+
+              {/* Review Form */}
+              <div className="p-4 overflow-y-auto">
+                {locations[selectedLocation] && (
+                  <div className="flex flex-col gap-4">
+                    <h2 className="text-lg font-medium mb-2">
+                      {locations[selectedLocation].name}
+                    </h2>
+
+                    {/* Rating */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">
+                        Your Rating
+                      </label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((rating) => (
+                          <button
+                            key={rating}
+                            type="button"
+                            onClick={() => setReviewRating(rating)}
+                            className="p-2"
+                          >
+                            <Star
+                              className="h-8 w-8"
+                              fill={
+                                rating <= reviewRating
+                                  ? appleColors.yellow
+                                  : "none"
+                              }
+                              stroke={
+                                rating <= reviewRating
+                                  ? appleColors.yellow
+                                  : appleColors.gray.dark
+                              }
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Review Comment */}
+                    <div>
+                      <label
+                        htmlFor="review-comment"
+                        className="block text-sm font-medium mb-2 text-gray-700"
+                      >
+                        Your Review
+                      </label>
+                      <textarea
+                        id="review-comment"
+                        rows={5}
+                        placeholder="Share your experience with this place..."
+                        className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: appleColors.gray.medium,
+                          borderRadius: "10px",
+                          fontSize: "15px",
+                          resize: "none",
+                        }}
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (reviewComment.trim()) {
+                          addReview(
+                            selectedLocation,
+                            reviewRating,
+                            reviewComment,
+                          );
+                          setShowReviewPanel(false);
+                        }
+                      }}
+                      disabled={!reviewComment.trim()}
+                      className="mt-4 w-full py-3 rounded-lg font-medium"
+                      style={{
+                        backgroundColor: reviewComment.trim()
+                          ? appleColors.blue
+                          : appleColors.gray.light,
+                        color: reviewComment.trim()
+                          ? "white"
+                          : appleColors.gray.dark,
+                        opacity: reviewComment.trim() ? 1 : 0.7,
+                      }}
+                    >
+                      Submit Review
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

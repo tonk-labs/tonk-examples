@@ -2,6 +2,14 @@ import { create } from "zustand";
 import { sync } from "@tonk/keepsync";
 import { useUserStore } from "./userStore";
 
+export interface Review {
+  id: string;
+  userId: string;
+  rating: number;
+  comment: string;
+  createdAt: number;
+}
+
 export interface Location {
   id: string;
   name: string;
@@ -12,6 +20,8 @@ export interface Location {
   createdAt: number;
   placeId: string;
   category: string;
+  isOpen?: boolean | null;
+  reviews?: Review[];
 }
 
 export interface LocationState {
@@ -28,8 +38,9 @@ export interface LocationState {
     id: string,
     updates: Partial<Omit<Location, "id" | "addedBy" | "createdAt">>,
   ) => void;
-  // Add a new action to update the user name mapping
   updateUserName: (userId: string, name: string) => void;
+  addReview: (locationId: string, rating: number, comment: string) => void;
+  removeReview: (locationId: string, reviewId: string) => void;
 }
 
 // Generate a random ID
@@ -117,6 +128,70 @@ export const useLocationStore = create<LocationState>(
               [id]: {
                 ...state.locations[id],
                 ...updates,
+              },
+            },
+          };
+        });
+      },
+
+      addReview: (locationId, rating, comment) => {
+        set((state) => {
+          if (!state.locations[locationId]) return state;
+
+          // Get the current active user ID from the userStore
+          const userStore = useUserStore.getState();
+          const activeProfileId = userStore.activeProfileId;
+
+          if (!activeProfileId) {
+            console.error("No active user profile found");
+            return state;
+          }
+
+          const reviewId = generateId();
+          const review: Review = {
+            id: reviewId,
+            userId: activeProfileId,
+            rating,
+            comment,
+            createdAt: Date.now(),
+          };
+
+          const location = state.locations[locationId];
+          const reviews = location.reviews
+            ? [...location.reviews, review]
+            : [review];
+
+          return {
+            locations: {
+              ...state.locations,
+              [locationId]: {
+                ...location,
+                reviews,
+              },
+            },
+          };
+        });
+      },
+
+      removeReview: (locationId, reviewId) => {
+        set((state) => {
+          if (
+            !state.locations[locationId] ||
+            !state.locations[locationId].reviews
+          )
+            return state;
+
+          const location = state.locations[locationId];
+          const reviews = location.reviews?.filter(
+            (review) => review.id !== reviewId,
+          );
+
+          return {
+            locations: {
+              ...state.locations,
+              [locationId]: {
+                ...location,
+                reviews,
               },
             },
           };

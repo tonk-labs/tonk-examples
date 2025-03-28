@@ -27,7 +27,7 @@ const getActiveProfileId = () => {
 
 export const useUserStore = create<UserState>(
   sync(
-    (set, get) => ({
+    (set) => ({
       profiles: [],
       activeProfileId: getActiveProfileId(),
 
