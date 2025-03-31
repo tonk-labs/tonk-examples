@@ -20,6 +20,7 @@ import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
 import CategoryManager from "./CategoryManager";
+import TourGuide from "./TourGuide";
 
 // Declare MapKit JS types
 declare global {
@@ -29,8 +30,8 @@ declare global {
 }
 
 const getMapKitToken = async (): Promise<string> => {
-  // Use environment variable for the MapKit token
-  const token = import.meta.env.MAPKIT_TOKEN;
+  const token =
+    "eyJraWQiOiJWWU5DUlVNTThHIiwidHlwIjoiSldUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiI4V1ZLUzJGMjRDIiwiaWF0IjoxNzQyODM4MDI2LCJleHAiOjE3NDM0OTA3OTl9.PLqIZrssCXQPFXZ3OUn22EflQaxQbNcqDvbn2OMQNtF8HuSPfTzpyDL4zgsIlefeUJNuyZsZhGz4Baete43cFQ";
 
   if (!token) {
     console.error("MapKit token not found in environment variables");
@@ -116,6 +117,8 @@ const MapView: React.FC = () => {
     null,
   );
   const [isLoadingHours, setIsLoadingHours] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [currentTourStep, setCurrentTourStep] = useState(0);
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -138,6 +141,43 @@ const MapView: React.FC = () => {
       secondary: "#8E8E93",
     },
   };
+
+  const tourSteps = [
+    {
+      title: "Welcome to My World!",
+      content:
+        "This is a demo app made by Tonk to get you started. Let's take a quick tour of the app. Click 'Next' to begin.",
+      position: "center",
+    },
+    {
+      target: ".user-selector",
+      title: "User Profiles",
+      content:
+        "Create and switch between different user profiles to manage your locations.",
+      position: "right",
+    },
+    {
+      target: ".category-manager",
+      title: "Categories",
+      content:
+        "Organize your locations by creating custom categories with colors.",
+      position: "right",
+    },
+    {
+      target: ".location-list",
+      title: "Saved Locations",
+      content:
+        "View all your saved locations here. Click on any location to see details.",
+      position: "right",
+    },
+    {
+      target: ".map-container",
+      title: "Interactive Map",
+      content:
+        "Click anywhere on the map to add new locations. Search for places using the search bar.",
+      position: "center",
+    },
+  ];
 
   // Default map center
   const defaultCenter: [number, number] = [51.505, -0.09]; // London
@@ -366,7 +406,7 @@ const MapView: React.FC = () => {
       // Add custom data to marker
       marker.locationId = location.id;
 
-      // Add callout (popup) with more information - Apple-style
+      // Add callout (popup) with more information
       marker.callout = {
         calloutElementForAnnotation: (annotation: any) => {
           const calloutElement = document.createElement("div");
@@ -606,6 +646,15 @@ const MapView: React.FC = () => {
             My World
           </h2>
         </div>
+
+        <button
+          onClick={() => setShowTour(true)}
+          className="p-2 rounded-full hover:bg-gray-100 transition-colors tour-button"
+          style={{ color: appleColors.blue }}
+        >
+          <Info className="h-5 w-5" />
+        </button>
+
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
           <User className="h-4 w-4 text-gray-600" />
           <span className="inline text-sm font-medium">
@@ -624,7 +673,7 @@ const MapView: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="relative flex flex-grow overflow-hidden">
-        {/* Left Sidebar - Apple-style */}
+        {/* Sidebar */}
         <div
           className={`
             fixed md:relative top-0 h-full z-[960] overflow-y-auto
@@ -668,7 +717,7 @@ const MapView: React.FC = () => {
 
             {/* Saved Locations Section - Apple-style */}
             <div
-              className="mb-6 rounded-xl overflow-hidden"
+              className="mb-6 rounded-xl overflow-hidden location-list"
               style={{ backgroundColor: appleColors.gray.light }}
             >
               <div
@@ -1555,6 +1604,20 @@ const MapView: React.FC = () => {
                 </form>
               </div>
             </div>
+          )}
+
+          {showTour && (
+            <TourGuide
+              steps={tourSteps}
+              currentStep={currentTourStep}
+              onNext={() => setCurrentTourStep((prev) => prev + 1)}
+              onPrev={() => setCurrentTourStep((prev) => prev - 1)}
+              onClose={() => {
+                setShowTour(false);
+                setCurrentTourStep(0);
+              }}
+              totalSteps={tourSteps.length}
+            />
           )}
         </div>
       </div>
