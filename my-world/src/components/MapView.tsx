@@ -1337,7 +1337,7 @@ const MapView: React.FC = () => {
                         style={{
                           borderColor: appleColors.gray.medium,
                           borderRadius: "10px",
-                          fontSize: "15px",
+                          fontSize: "16px",
                           resize: "none",
                         }}
                         value={reviewComment}
@@ -1451,7 +1451,7 @@ const MapView: React.FC = () => {
                       style={{
                         borderColor: appleColors.gray.medium,
                         borderRadius: "10px",
-                        fontSize: "15px",
+                        fontSize: "16px",
                       }}
                       value={newLocation.name}
                       onChange={(e) =>
@@ -1480,7 +1480,7 @@ const MapView: React.FC = () => {
                       style={{
                         borderColor: appleColors.gray.medium,
                         borderRadius: "10px",
-                        fontSize: "15px",
+                        fontSize: "16px",
                         resize: "none",
                       }}
                       value={newLocation.description}

@@ -1,10 +1,16 @@
 {
   "ec2": {
-    "instance": "ec2-51-21-246-155.eu-north-1.compute.amazonaws.com",
+    "instance": "ec2-51-21-197-90.eu-north-1.compute.amazonaws.com",
     "user": "ec2-user",
-    "keyPath": "/Users/jackdouglas/tonk/tonk/examples/my-world/test.pem"
+    "keyPath": "/Users/jackdouglas/tonk/tonk-examples/my-world/tonk-key.pem"
   },
   "websocket": {
-    "url": "ws://ec2-51-21-246-155.eu-north-1.compute.amazonaws.com"
+    "url": "ws://ec2-51-21-197-90.eu-north-1.compute.amazonaws.com"
+  },
+  "filesystem": {
+    "enabled": true,
+    "storagePath": "~/tonk-data",
+    "syncInterval": 30000,
+    "createIfMissing": true
   }
 }
