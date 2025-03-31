@@ -94,7 +94,7 @@ const MapView: React.FC = () => {
     latitude: 0,
     longitude: 0,
     placeId: "",
-    category: "default", // Default category
+    category: "default",
   });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -117,8 +117,18 @@ const MapView: React.FC = () => {
     null,
   );
   const [isLoadingHours, setIsLoadingHours] = useState(false);
-  const [showTour, setShowTour] = useState(false);
-  const [currentTourStep, setCurrentTourStep] = useState(0);
+  const [showTour, setShowTour] = useState(() => {
+    const hasSeenTour = localStorage.getItem("tour-main-seen");
+    if (hasSeenTour === null || hasSeenTour === "false") {
+      localStorage.setItem("tour-main-active", "true");
+      return true;
+    }
+    return localStorage.getItem("tour-main-active") === "true";
+  });
+  const [currentTourStep, setCurrentTourStep] = useState(() => {
+    const savedStep = localStorage.getItem("tour-main-step");
+    return savedStep ? parseInt(savedStep, 10) : 0;
+  });
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -176,6 +186,13 @@ const MapView: React.FC = () => {
       content:
         "Click anywhere on the map to add new locations. Search for places using the search bar.",
       position: "center",
+    },
+    {
+      title: "Add a Feature",
+      content:
+        "If you haven't already, open this project in your AI editor of choice and run the following prompt:\n\n\"Add a new 'Bucket List' feature that lets users star saved locations and displays them in a special list under saved locations in the sidebar.\"",
+      position: "center",
+      persistAfterReload: true,
     },
   ];
 
@@ -565,6 +582,13 @@ const MapView: React.FC = () => {
     }
   }, []);
 
+  // Save tour state when it changes
+  useEffect(() => {
+    if (showTour) {
+      localStorage.setItem("tour-main-active", "true");
+    }
+  }, [showTour]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newLocation.name.trim() === "" || newLocation.latitude === 0) return;
@@ -645,15 +669,14 @@ const MapView: React.FC = () => {
           >
             My World
           </h2>
+          <button
+            onClick={() => setShowTour(true)}
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors tour-button"
+            style={{ color: appleColors.blue }}
+          >
+            <Info className="h-5 w-5" />
+          </button>
         </div>
-
-        <button
-          onClick={() => setShowTour(true)}
-          className="p-2 rounded-full hover:bg-gray-100 transition-colors tour-button"
-          style={{ color: appleColors.blue }}
-        >
-          <Info className="h-5 w-5" />
-        </button>
 
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
           <User className="h-4 w-4 text-gray-600" />
@@ -1610,13 +1633,25 @@ const MapView: React.FC = () => {
             <TourGuide
               steps={tourSteps}
               currentStep={currentTourStep}
-              onNext={() => setCurrentTourStep((prev) => prev + 1)}
-              onPrev={() => setCurrentTourStep((prev) => prev - 1)}
+              onNext={() => {
+                const nextStep = currentTourStep + 1;
+                setCurrentTourStep(nextStep);
+                localStorage.setItem("tour-main-step", nextStep.toString());
+              }}
+              onPrev={() => {
+                const prevStep = currentTourStep - 1;
+                setCurrentTourStep(prevStep);
+                localStorage.setItem("tour-main-step", prevStep.toString());
+              }}
               onClose={() => {
                 setShowTour(false);
                 setCurrentTourStep(0);
+                localStorage.removeItem("tour-main-active");
+                localStorage.removeItem("tour-main-step");
+                localStorage.setItem("tour-main-seen", "true");
               }}
               totalSteps={tourSteps.length}
+              tourId="main"
             />
           )}
         </div>

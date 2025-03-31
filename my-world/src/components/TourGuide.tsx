@@ -6,12 +6,14 @@ interface TourGuideProps {
     title: string;
     content: string;
     position: "left" | "right" | "top" | "bottom" | "center";
+    persistAfterReload?: boolean;
   }[];
   currentStep: number;
   onNext: () => void;
   onPrev: () => void;
   onClose: () => void;
   totalSteps: number;
+  tourId?: string;
 }
 
 const TourGuide: React.FC<TourGuideProps> = ({
@@ -21,12 +23,20 @@ const TourGuide: React.FC<TourGuideProps> = ({
   onPrev,
   onClose,
   totalSteps,
+  tourId = "default-tour",
 }) => {
   const step = steps[currentStep];
   const targetElement = step.target
     ? document.querySelector(step.target)
     : null;
   const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (steps[currentStep]?.persistAfterReload) {
+      localStorage.setItem(`tour-${tourId}-step`, currentStep.toString());
+      localStorage.setItem(`tour-${tourId}-active`, "true");
+    }
+  }, [currentStep, steps, tourId]);
 
   useEffect(() => {
     if (step.position === "center") {
@@ -87,7 +97,9 @@ const TourGuide: React.FC<TourGuideProps> = ({
         }}
       >
         <h3 className="font-medium text-lg mb-2">{step.title}</h3>
-        <p className="text-gray-600 mb-4">{step.content}</p>
+        <pre className="text-gray-600 mb-4 whitespace-pre-wrap font-sans pr-8">
+          {step.content}
+        </pre>
         <div className="flex justify-between items-center">
           <div className="flex gap-2">
             {currentStep > 0 && (
