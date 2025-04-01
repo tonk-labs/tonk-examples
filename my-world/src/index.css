@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 .tour-highlight {
-  position: relative;
   z-index: 980;
   animation: pulse 2s infinite;
   pointer-events: auto;

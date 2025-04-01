@@ -30,8 +30,7 @@ declare global {
 }
 
 const getMapKitToken = async (): Promise<string> => {
-  const token =
-    "eyJraWQiOiJWWU5DUlVNTThHIiwidHlwIjoiSldUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiI4V1ZLUzJGMjRDIiwiaWF0IjoxNzQyODM4MDI2LCJleHAiOjE3NDM0OTA3OTl9.PLqIZrssCXQPFXZ3OUn22EflQaxQbNcqDvbn2OMQNtF8HuSPfTzpyDL4zgsIlefeUJNuyZsZhGz4Baete43cFQ";
+  const token = import.meta.env.MAPKIT_TOKEN;
 
   if (!token) {
     console.error("MapKit token not found in environment variables");
@@ -108,7 +107,6 @@ const MapView: React.FC = () => {
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
   // const [isGettingLocation, setIsGettingLocation] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -170,7 +168,7 @@ const MapView: React.FC = () => {
       target: ".category-manager",
       title: "Categories",
       content:
-        "Organize your locations by creating custom categories with colors.",
+        "Organise your locations by creating custom categories with colours.",
       position: "right",
     },
     {
@@ -181,10 +179,16 @@ const MapView: React.FC = () => {
       position: "right",
     },
     {
-      target: ".map-container",
+      target: ".search-bar",
       title: "Interactive Map",
       content:
-        "Click anywhere on the map to add new locations. Search for places using the search bar.",
+        "Use the search bar to add a new location to the map, then continue to the next step.",
+      position: "right",
+    },
+    {
+      title: "Transparent Data",
+      content:
+        "Go back to the Tonk Hub and navigate to the file <code>my-world-locations.automerge</code> under <code>stores</code>. You should see your new location present in the list.",
       position: "center",
     },
     {
@@ -991,7 +995,7 @@ const MapView: React.FC = () => {
           />
 
           {/* Search bar overlay - aligned to upper left */}
-          <div className="absolute top-4 left-4 z-[900] pointer-events-none">
+          <div className="absolute top-4 left-4 z-[900] pointer-events-none search-bar">
             <div className="w-80 pointer-events-auto">
               <PlaceSearch
                 onPlaceSelect={(latitude, longitude, name, placeId) => {
@@ -1001,59 +1005,6 @@ const MapView: React.FC = () => {
               />
             </div>
           </div>
-
-          {/* Current location button - aligned to bottom right */}
-          {/* <div className="absolute bottom-24 right-4 z-[900]"> */}
-          {/*   <button */}
-          {/*     onClick={getCurrentLocation} */}
-          {/*     disabled={isGettingLocation} */}
-          {/*     className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all" */}
-          {/*     style={{ */}
-          {/*       boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)", */}
-          {/*       border: "1px solid rgba(0, 0, 0, 0.1)", */}
-          {/*       opacity: isGettingLocation ? 0.7 : 1, */}
-          {/*     }} */}
-          {/*     aria-label="Get current location" */}
-          {/*   > */}
-          {/*     <Locate */}
-          {/*       className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`} */}
-          {/*       style={{ color: appleColors.blue }} */}
-          {/*     /> */}
-          {/*   </button> */}
-          {/* </div> */}
-
-          {/* Location error message */}
-          {locationError && (
-            <div
-              className="absolute bottom-40 right-4 left-4 md:left-auto md:w-72 z-[900] bg-white rounded-lg p-3 shadow-lg"
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.95)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <div className="flex items-start">
-                <div
-                  className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-2"
-                  style={{ backgroundColor: "rgba(255, 59, 48, 0.1)" }}
-                >
-                  <span style={{ color: appleColors.red }}>!</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Location Error</p>
-                  <p className="text-xs text-gray-600">{locationError}</p>
-                </div>
-                <button
-                  className="ml-auto text-xs font-medium"
-                  style={{ color: appleColors.blue }}
-                  onClick={() => setLocationError(null)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Location Details Panel */}
           {selectedLocation && !showReviewPanel && (

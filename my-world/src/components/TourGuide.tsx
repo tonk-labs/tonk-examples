@@ -97,9 +97,10 @@ const TourGuide: React.FC<TourGuideProps> = ({
         }}
       >
         <h3 className="font-medium text-lg mb-2">{step.title}</h3>
-        <pre className="text-gray-600 mb-4 whitespace-pre-wrap font-sans pr-8">
-          {step.content}
-        </pre>
+        <div
+          className="text-gray-600 mb-4 whitespace-pre-wrap font-sans pr-8"
+          dangerouslySetInnerHTML={{ __html: step.content }}
+        />
         <div className="flex justify-between items-center">
           <div className="flex gap-2">
             {currentStep > 0 && (
