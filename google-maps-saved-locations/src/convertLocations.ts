@@ -3,6 +3,7 @@ import { parse } from "csv-parse/sync";
 import { nanoid } from "nanoid";
 import * as fs from "fs/promises";
 import * as dotenv from "dotenv";
+import * as Automerge from "@automerge/automerge";
 
 dotenv.config();
 
@@ -27,25 +28,33 @@ interface OutputFormat {
   };
 }
 
-async function extractPlaceId(url: string): Promise<string> {
-  // Extract CID (Client ID) from Google Maps URL
-  // This is in the format 0x48761a61e122b21d:0x96affb5e294f9905
-  const match = url.match(/!1s([0-9a-fx:]+)/);
-  if (match) {
-    console.log(`Extracted CID from URL: ${match[1]}`);
-    return match[1];
-  }
+async function loadAutomergeDoc(filePath: string): Promise<Automerge.Doc<any>> {
+  try {
+    // Check if the file exists
+    await fs.access(filePath);
 
-  // Fallback: try to extract from the URL path for other URL formats
-  const placeNameMatch = url.match(/place\/([^\/]+)\//);
-  if (placeNameMatch) {
-    const placeName = decodeURIComponent(placeNameMatch[1].replace(/\+/g, " "));
-    console.log(`Extracted place name from URL: ${placeName}`);
-    return `name:${placeName}`;
-  }
+    // Read the binary file
+    const binary = await fs.readFile(filePath);
 
-  console.log(`Could not extract identifier from URL: ${url}`);
-  return "";
+    // Load the document from binary
+    return Automerge.load(binary);
+  } catch (error) {
+    // If file doesn't exist or can't be loaded, create a new document
+    console.log(`Creating new Automerge document (${error})`);
+    return Automerge.init();
+  }
+}
+
+async function saveAutomergeDoc(
+  doc: Automerge.Doc<any>,
+  filePath: string,
+): Promise<void> {
+  // Convert the document to binary
+  const binary = Automerge.save(doc);
+
+  // Write the binary to file
+  await fs.writeFile(filePath, binary);
+  console.log(`Saved Automerge document to ${filePath}`);
 }
 
 async function main() {
@@ -75,66 +84,7 @@ async function main() {
 
   // Process each location
   for (const record of records) {
-    const placeId = await extractPlaceId(record.URL);
-
-    if (!placeId) {
-      console.error(`Could not extract identifier from URL: ${record.URL}`);
-      continue;
-    }
-
     try {
-      // If we have a name-based reference instead of a direct CID
-      if (placeId.startsWith("name:")) {
-        const placeName = placeId.substring(5);
-        console.log(`Searching for place by name: ${placeName}`);
-
-        // Use the Places API to search for the place by name
-        const searchResponse = await client.findPlaceFromText({
-          params: {
-            input: placeName,
-            inputtype: "textquery",
-            fields: ["place_id", "name", "geometry"],
-            key: apiKey,
-          },
-        });
-
-        if (
-          searchResponse.data.status !== "OK" ||
-          !searchResponse.data.candidates ||
-          searchResponse.data.candidates.length === 0
-        ) {
-          console.error(
-            `Could not find place ID for: ${placeName}`,
-            searchResponse.data,
-          );
-          continue;
-        }
-
-        // Use the first result
-        const candidate = searchResponse.data.candidates[0];
-        console.log(`Found place for ${placeName}: ${candidate.name}`);
-
-        // Create a location entry using the search result
-        const locationId = nanoid(10);
-        output.locations[locationId] = {
-          addedBy: "7fn52mcm1f5", // Default to Jack
-          category: "favorite", // Default category
-          createdAt: Date.now(),
-          description: record.Note || "",
-          id: locationId,
-          latitude: candidate.geometry?.location.lat || 0,
-          longitude: candidate.geometry?.location.lng || 0,
-          name: record.Title || candidate.name || "",
-          placeId: candidate.place_id || "",
-        };
-        continue;
-      }
-
-      // For CID-based URLs, we'll use a different approach
-      // Google Maps API doesn't directly support CID lookups, so we'll use a text search
-      // based on the title from the CSV
-      console.log(`Using title "${record.Title}" to search for place details`);
-
       const searchResponse = await client.findPlaceFromText({
         params: {
           input: record.Title,
@@ -195,6 +145,32 @@ async function main() {
   // Write the output to a file
   await fs.writeFile("output.json", JSON.stringify(output, null, 2));
   console.log("Conversion complete! Check output.json");
+
+  // Load or create Automerge document
+  const automergeFilePath = process.argv[2] || "locations.bin";
+  console.log(`Loading Automerge document from ${automergeFilePath}`);
+  let doc = await loadAutomergeDoc(automergeFilePath);
+
+  // Patch the output into the Automerge document
+  doc = Automerge.change(doc, "Add imported locations", (doc) => {
+    // Initialize document structure if it doesn't exist
+    if (!doc.locations) doc.locations = {};
+    if (!doc.userNames) doc.userNames = {};
+
+    // Add user names
+    for (const [userId, userName] of Object.entries(output.userNames)) {
+      doc.userNames[userId] = userName;
+    }
+
+    // Add locations
+    for (const [locationId, location] of Object.entries(output.locations)) {
+      doc.locations[locationId] = location;
+    }
+  });
+
+  // Save the updated Automerge document
+  await saveAutomergeDoc(doc, automergeFilePath);
+  console.log(`Updated Automerge document saved to ${automergeFilePath}`);
 }
 
 main().catch(console.error);
