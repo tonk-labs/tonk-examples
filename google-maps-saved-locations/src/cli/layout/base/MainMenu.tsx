@@ -19,6 +19,13 @@ export const MainMenu: React.FC = () => {
       },
     },
     {
+      title: "Convert",
+      onSelect: () => {
+        navigate(ROUTE.CONVERT);
+        parentZone.select(COLUMNS.MAIN);
+      },
+    },
+    {
       title: "COLUMN",
       items: [],
     },

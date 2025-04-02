@@ -1,7 +1,7 @@
 import React from "react";
 
 import { BaseLayout, WelcomeLayout } from "./layout";
-import { Welcome, Login, Help, Home } from "./modules";
+import { Welcome, Login, Help, Home, Convert } from "./modules";
 import { routerFactory } from "./router";
 
 export enum ROUTE {
@@ -9,6 +9,7 @@ export enum ROUTE {
   HELP,
   LOGIN,
   HOME,
+  CONVERT,
 }
 
 interface ROUTE_DATA {
@@ -19,7 +20,7 @@ interface ROUTE_DATA {
 
 const layout = (
   Layout: React.FC<{ children: React.ReactNode }>,
-  Component: React.FC
+  Component: React.FC,
 ) => (
   <Layout>
     <Component />
@@ -33,6 +34,7 @@ const router = routerFactory<ROUTE, ROUTE_DATA>({
   [ROUTE.LOGIN]: welcome(Login),
   [ROUTE.HELP]: base(Help),
   [ROUTE.HOME]: base(Home),
+  [ROUTE.CONVERT]: base(Convert),
 });
 
 export const {

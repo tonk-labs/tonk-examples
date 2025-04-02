@@ -8,11 +8,11 @@ import { useInput, UserInput } from "./useInput";
 export type SuperKey =
   | `${"meta" | "ctrl"}+${keyof Key | string}`
   | keyof Key
-  | "any";
+  | any;
 
 export const checkSuperKey = (
   input: UserInput,
-  superKey: SuperKey | SuperKey[]
+  superKey: SuperKey | SuperKey[],
 ) => {
   const superKeys = Array.isArray(superKey) ? superKey : [superKey];
 

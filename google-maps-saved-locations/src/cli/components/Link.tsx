@@ -3,28 +3,42 @@ import { Text, TextProps } from "ink";
 
 import { SuperKey, useKey } from "../hooks";
 import { ROUTE, useNavigate } from "../routes";
+import { Selection } from "./SelectionZone/Selection";
 
 interface Props extends TextProps {
   children: React.ReactNode;
-  isFocused: boolean;
   to: ROUTE;
   selectKey?: SuperKey | SuperKey[];
+  isFocused?: boolean;
 }
 
 export const Link: React.FC<Props> = ({
   children,
   selectKey = "return",
-  isFocused,
   to,
+  isFocused: propIsFocused,
   ...props
 }) => {
   const navigate = useNavigate();
 
-  useKey(selectKey, () => navigate(to), isFocused);
+  const handlePress = () => {
+    navigate(to);
+  };
 
   return (
-    <Text {...props} bold={isFocused}>
-      {children}
-    </Text>
+    <Selection>
+      {(isFocused) => {
+        useKey(selectKey, handlePress, isFocused);
+
+        return (
+          <Text
+            {...props}
+            bold={propIsFocused !== undefined ? propIsFocused : isFocused}
+          >
+            {children}
+          </Text>
+        );
+      }}
+    </Selection>
   );
 };
