@@ -9,8 +9,8 @@
   },
   "filesystem": {
     "enabled": true,
-    "storagePath": "~/tonk-data",
-    "syncInterval": 30000,
+    "storagePath": "~/.tonk/stores/",
+    "syncInterval": 1000,
     "createIfMissing": true
   }
 }
