@@ -154,7 +154,7 @@ const MapView: React.FC = () => {
     {
       title: "Welcome to My World!",
       content:
-        "This is a demo app made by Tonk to get you started. Let's take a quick tour of the app. Click 'Next' to begin.",
+        "This is a demo app made by Tonk to get you started. Let's take a quick look around. Click 'Next' to begin.",
       position: "center",
     },
     {
