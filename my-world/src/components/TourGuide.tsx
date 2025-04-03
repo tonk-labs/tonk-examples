@@ -45,7 +45,7 @@ const TourGuide: React.FC<TourGuideProps> = ({
       const viewportWidth = window.innerWidth;
       setPosition({
         top: viewportHeight / 2 - 100, // Adjust for half the height of the tooltip
-        left: viewportWidth / 2 - 144, // Half of the width (w-72 = 288px / 2 = 144px)
+        left: viewportWidth / 2, // Use transform for horizontal centering
       });
     } else if (targetElement) {
       const rect = targetElement.getBoundingClientRect();
@@ -86,7 +86,7 @@ const TourGuide: React.FC<TourGuideProps> = ({
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 z-[970]" />
       <div
-        className={`fixed z-[990] bg-white rounded-xl shadow-lg p-4 w-72 ${
+        className={`fixed z-[990] bg-white rounded-xl shadow-lg p-[1.2em] w-[30em] max-w-[90vw] ${
           step.position === "center"
             ? "transform -translate-x-1/2 -translate-y-1/2"
             : ""
@@ -98,7 +98,8 @@ const TourGuide: React.FC<TourGuideProps> = ({
       >
         <h3 className="font-medium text-lg mb-2">{step.title}</h3>
         <div
-          className="text-gray-600 mb-4 whitespace-pre-wrap font-sans pr-8"
+          className="text-gray-600 mb-4 whitespace-pre-wrap font-sans"
+          style={{ maxWidth: "60ch", lineHeight: "1.5" }}
           dangerouslySetInnerHTML={{ __html: step.content }}
         />
         <div className="flex justify-between items-center">
