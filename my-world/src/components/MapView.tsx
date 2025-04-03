@@ -20,6 +20,7 @@ import PlaceSearch from "./PlaceSearch";
 import UserComparison from "./UserComparison";
 import UserSelector from "./UserSelector";
 import CategoryManager from "./CategoryManager";
+import TourGuide from "./TourGuide";
 
 // Declare MapKit JS types
 declare global {
@@ -29,7 +30,6 @@ declare global {
 }
 
 const getMapKitToken = async (): Promise<string> => {
-  // Use environment variable for the MapKit token
   const token = import.meta.env.MAPKIT_TOKEN;
 
   if (!token) {
@@ -93,7 +93,7 @@ const MapView: React.FC = () => {
     latitude: 0,
     longitude: 0,
     placeId: "",
-    category: "default", // Default category
+    category: "default",
   });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -107,7 +107,6 @@ const MapView: React.FC = () => {
   const markersRef = useRef<any[]>([]);
   const [mapIsReady, setMapIsReady] = useState(false);
   // const [isGettingLocation, setIsGettingLocation] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -116,6 +115,18 @@ const MapView: React.FC = () => {
     null,
   );
   const [isLoadingHours, setIsLoadingHours] = useState(false);
+  const [showTour, setShowTour] = useState(() => {
+    const hasSeenTour = localStorage.getItem("tour-main-seen");
+    if (hasSeenTour === null || hasSeenTour === "false") {
+      localStorage.setItem("tour-main-active", "true");
+      return true;
+    }
+    return localStorage.getItem("tour-main-active") === "true";
+  });
+  const [currentTourStep, setCurrentTourStep] = useState(() => {
+    const savedStep = localStorage.getItem("tour-main-step");
+    return savedStep ? parseInt(savedStep, 10) : 0;
+  });
 
   // Get the active user profile
   const activeProfile = profiles.find(
@@ -138,6 +149,56 @@ const MapView: React.FC = () => {
       secondary: "#8E8E93",
     },
   };
+
+  const tourSteps = [
+    {
+      title: "Welcome to My World!",
+      content:
+        "This is a demo app made by Tonk to get you started. Let's take a quick look around. Click 'Next' to begin.",
+      position: "center",
+    },
+    {
+      target: ".user-selector",
+      title: "User Profiles",
+      content:
+        "Create and switch between different user profiles to manage your locations.",
+      position: "right",
+    },
+    {
+      target: ".category-manager",
+      title: "Categories",
+      content:
+        "Organise your locations by creating custom categories with colours.",
+      position: "right",
+    },
+    {
+      target: ".location-list",
+      title: "Saved Locations",
+      content:
+        "View all your saved locations here. Click on any location to see details.",
+      position: "right",
+    },
+    {
+      target: ".search-bar",
+      title: "Interactive Map",
+      content:
+        "Use the search bar to add a new location to the map, then continue to the next step.",
+      position: "right",
+    },
+    {
+      title: "Transparent Data",
+      content:
+        "Go back to the Tonk Hub and navigate to the file <code>my-world-locations.automerge</code> under <code>stores</code>. You should see your new location present in the list.",
+      position: "center",
+    },
+    {
+      title: "Add a Feature",
+      content:
+        "If you haven't already, open this project in your AI editor of choice and run the following prompt:\n\n\"Add a new 'Bucket List' feature that lets users star saved locations and displays them in a special list under saved locations in the sidebar.\"",
+      position: "center",
+      persistAfterReload: true,
+    },
+  ];
 
   // Default map center
   const defaultCenter: [number, number] = [51.505, -0.09]; // London
@@ -366,7 +427,7 @@ const MapView: React.FC = () => {
       // Add custom data to marker
       marker.locationId = location.id;
 
-      // Add callout (popup) with more information - Apple-style
+      // Add callout (popup) with more information
       marker.callout = {
         calloutElementForAnnotation: (annotation: any) => {
           const calloutElement = document.createElement("div");
@@ -525,6 +586,13 @@ const MapView: React.FC = () => {
     }
   }, []);
 
+  // Save tour state when it changes
+  useEffect(() => {
+    if (showTour) {
+      localStorage.setItem("tour-main-active", "true");
+    }
+  }, [showTour]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newLocation.name.trim() === "" || newLocation.latitude === 0) return;
@@ -605,7 +673,15 @@ const MapView: React.FC = () => {
           >
             My World
           </h2>
+          <button
+            onClick={() => setShowTour(true)}
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors tour-button"
+            style={{ color: appleColors.blue }}
+          >
+            <Info className="h-5 w-5" />
+          </button>
         </div>
+
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
           <User className="h-4 w-4 text-gray-600" />
           <span className="inline text-sm font-medium">
@@ -624,7 +700,7 @@ const MapView: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="relative flex flex-grow overflow-hidden">
-        {/* Left Sidebar - Apple-style */}
+        {/* Sidebar */}
         <div
           className={`
             fixed md:relative top-0 h-full z-[960] overflow-y-auto
@@ -668,7 +744,7 @@ const MapView: React.FC = () => {
 
             {/* Saved Locations Section - Apple-style */}
             <div
-              className="mb-6 rounded-xl overflow-hidden"
+              className="mb-6 rounded-xl overflow-hidden location-list"
               style={{ backgroundColor: appleColors.gray.light }}
             >
               <div
@@ -919,7 +995,7 @@ const MapView: React.FC = () => {
           />
 
           {/* Search bar overlay - aligned to upper left */}
-          <div className="absolute top-4 left-4 z-[900] pointer-events-none">
+          <div className="absolute top-4 left-4 z-[900] pointer-events-none search-bar">
             <div className="w-80 pointer-events-auto">
               <PlaceSearch
                 onPlaceSelect={(latitude, longitude, name, placeId) => {
@@ -929,59 +1005,6 @@ const MapView: React.FC = () => {
               />
             </div>
           </div>
-
-          {/* Current location button - aligned to bottom right */}
-          {/* <div className="absolute bottom-24 right-4 z-[900]"> */}
-          {/*   <button */}
-          {/*     onClick={getCurrentLocation} */}
-          {/*     disabled={isGettingLocation} */}
-          {/*     className="w-12 h-12 rounded-full bg-white shadow-lg flex items-center justify-center transition-all" */}
-          {/*     style={{ */}
-          {/*       boxShadow: "0 2px 10px rgba(0, 0, 0, 0.15)", */}
-          {/*       border: "1px solid rgba(0, 0, 0, 0.1)", */}
-          {/*       opacity: isGettingLocation ? 0.7 : 1, */}
-          {/*     }} */}
-          {/*     aria-label="Get current location" */}
-          {/*   > */}
-          {/*     <Locate */}
-          {/*       className={`h-5 w-5 ${isGettingLocation ? "animate-pulse" : ""}`} */}
-          {/*       style={{ color: appleColors.blue }} */}
-          {/*     /> */}
-          {/*   </button> */}
-          {/* </div> */}
-
-          {/* Location error message */}
-          {locationError && (
-            <div
-              className="absolute bottom-40 right-4 left-4 md:left-auto md:w-72 z-[900] bg-white rounded-lg p-3 shadow-lg"
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.95)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-                border: "1px solid rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <div className="flex items-start">
-                <div
-                  className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-2"
-                  style={{ backgroundColor: "rgba(255, 59, 48, 0.1)" }}
-                >
-                  <span style={{ color: appleColors.red }}>!</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Location Error</p>
-                  <p className="text-xs text-gray-600">{locationError}</p>
-                </div>
-                <button
-                  className="ml-auto text-xs font-medium"
-                  style={{ color: appleColors.blue }}
-                  onClick={() => setLocationError(null)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Location Details Panel */}
           {selectedLocation && !showReviewPanel && (
@@ -1555,6 +1578,32 @@ const MapView: React.FC = () => {
                 </form>
               </div>
             </div>
+          )}
+
+          {showTour && (
+            <TourGuide
+              steps={tourSteps}
+              currentStep={currentTourStep}
+              onNext={() => {
+                const nextStep = currentTourStep + 1;
+                setCurrentTourStep(nextStep);
+                localStorage.setItem("tour-main-step", nextStep.toString());
+              }}
+              onPrev={() => {
+                const prevStep = currentTourStep - 1;
+                setCurrentTourStep(prevStep);
+                localStorage.setItem("tour-main-step", prevStep.toString());
+              }}
+              onClose={() => {
+                setShowTour(false);
+                setCurrentTourStep(0);
+                localStorage.removeItem("tour-main-active");
+                localStorage.removeItem("tour-main-step");
+                localStorage.setItem("tour-main-seen", "true");
+              }}
+              totalSteps={tourSteps.length}
+              tourId="main"
+            />
           )}
         </div>
       </div>

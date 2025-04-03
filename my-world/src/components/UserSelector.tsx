@@ -3,7 +3,14 @@ import { useUserStore } from "../stores";
 import { User, Plus, Edit2, Trash2 } from "lucide-react";
 
 const UserSelector: React.FC = () => {
-  const { profiles, activeProfileId, createProfile, setActiveProfile, updateProfileName, deleteProfile } = useUserStore();
+  const {
+    profiles,
+    activeProfileId,
+    createProfile,
+    setActiveProfile,
+    updateProfileName,
+    deleteProfile,
+  } = useUserStore();
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
@@ -48,10 +55,12 @@ const UserSelector: React.FC = () => {
 
   const handleDeleteProfile = (id: string) => {
     if (profiles.length <= 1) {
-      alert("Cannot delete the last profile. Please create another profile first.");
+      alert(
+        "Cannot delete the last profile. Please create another profile first.",
+      );
       return;
     }
-    
+
     deleteProfile(id);
   };
 
@@ -63,7 +72,7 @@ const UserSelector: React.FC = () => {
 
   return (
     <div
-      className="mb-6 rounded-xl overflow-hidden"
+      className="mb-6 rounded-xl overflow-hidden user-selector"
       style={{ backgroundColor: appleColors.gray.light }}
     >
       <div
@@ -199,7 +208,10 @@ const UserSelector: React.FC = () => {
         {/* Profile List */}
         <div className="space-y-2 max-h-[200px] overflow-y-auto">
           {profiles.length === 0 ? (
-            <div className="text-center p-4 text-sm" style={{ color: appleColors.text.secondary }}>
+            <div
+              className="text-center p-4 text-sm"
+              style={{ color: appleColors.text.secondary }}
+            >
               No profiles yet. Create your first profile.
             </div>
           ) : (
@@ -210,19 +222,28 @@ const UserSelector: React.FC = () => {
                   profile.id === activeProfileId ? "bg-blue-50" : "bg-white"
                 }`}
                 style={{
-                  borderLeft: profile.id === activeProfileId ? `4px solid ${appleColors.blue}` : "none",
+                  borderLeft:
+                    profile.id === activeProfileId
+                      ? `4px solid ${appleColors.blue}`
+                      : "none",
                 }}
               >
                 <div className="flex items-center gap-2">
                   <User
                     className="h-5 w-5"
                     style={{
-                      color: profile.id === activeProfileId ? appleColors.blue : appleColors.text.secondary,
+                      color:
+                        profile.id === activeProfileId
+                          ? appleColors.blue
+                          : appleColors.text.secondary,
                     }}
                   />
                   <div>
                     <div className="font-medium">{profile.name}</div>
-                    <div className="text-xs" style={{ color: appleColors.text.secondary }}>
+                    <div
+                      className="text-xs"
+                      style={{ color: appleColors.text.secondary }}
+                    >
                       {profile.id === activeProfileId ? "Active" : ""}
                     </div>
                   </div>
@@ -242,7 +263,10 @@ const UserSelector: React.FC = () => {
                     className="p-1 rounded-full hover:bg-gray-100"
                     aria-label="Edit profile"
                   >
-                    <Edit2 className="h-4 w-4" style={{ color: appleColors.text.secondary }} />
+                    <Edit2
+                      className="h-4 w-4"
+                      style={{ color: appleColors.text.secondary }}
+                    />
                   </button>
                   <button
                     onClick={() => handleDeleteProfile(profile.id)}
@@ -250,12 +274,15 @@ const UserSelector: React.FC = () => {
                     aria-label="Delete profile"
                     disabled={profiles.length <= 1}
                   >
-                    <Trash2 
-                      className="h-4 w-4" 
-                      style={{ 
-                        color: profiles.length <= 1 ? appleColors.gray.dark : appleColors.red,
-                        opacity: profiles.length <= 1 ? 0.5 : 1
-                      }} 
+                    <Trash2
+                      className="h-4 w-4"
+                      style={{
+                        color:
+                          profiles.length <= 1
+                            ? appleColors.gray.dark
+                            : appleColors.red,
+                        opacity: profiles.length <= 1 ? 0.5 : 1,
+                      }}
                     />
                   </button>
                 </div>

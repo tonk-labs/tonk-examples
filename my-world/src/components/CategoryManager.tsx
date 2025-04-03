@@ -92,7 +92,7 @@ const CategoryManager: React.FC = () => {
 
   return (
     <div
-      className="mb-6 rounded-xl overflow-hidden"
+      className="mb-6 rounded-xl overflow-hidden category-manager"
       style={{ backgroundColor: appleColors.gray.light }}
     >
       <div
