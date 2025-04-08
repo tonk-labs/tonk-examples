@@ -11,7 +11,7 @@ import {
 } from "./serviceWorkerRegistration";
 
 // Service worker logic based on environment
-if (process.env.NODE_ENV === "production") {
+if (import.meta.env.PROD) {
   // Only register service worker in production mode
   registerServiceWorker();
 } else {

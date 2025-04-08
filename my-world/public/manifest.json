@@ -1,11 +1,11 @@
 {
   "name": "My World",
-  "short_name": "My World",
-  "description": "A Tonk App",
+  "short_name": "MyWorld",
+  "description": "A tinyfoot application",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
