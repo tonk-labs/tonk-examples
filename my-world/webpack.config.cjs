@@ -36,7 +36,11 @@ module.exports = (env, argv) => {
         {
           test: /\.css$/,
           use: ['style-loader', 'css-loader', 'postcss-loader']
-        }
+        },
+        {
+          test: /\.wasm$/,
+          type: 'asset/resource',
+        },
       ]
     },
     resolve: {
@@ -107,6 +111,9 @@ module.exports = (env, argv) => {
       hints: false,
       maxEntrypointSize: 512000,
       maxAssetSize: 512000,
+    },
+    optimization: {
+      minimize: false,
     },
   };
 
